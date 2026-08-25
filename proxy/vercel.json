@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/query.js": {
+      "maxDuration": 15
+    }
+  }
+}

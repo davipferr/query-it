@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QueryIt</title>
+    <link rel="stylesheet" href="css/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>QueryIt</h1>
+      <div class="topbar-actions">
+        <button id="open-settings">Configurações</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h2>Schema</h2>
+          <button id="load-schema">Carregar</button>
+        </div>
+        <div id="schema-tree" class="schema-tree">
+          <p class="hint">Configure a conexão e clique em "Carregar".</p>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="toolbar">
+          <button id="add-sql-cell">+ Célula SQL</button>
+          <button id="add-js-cell">+ Célula JS</button>
+          <span class="hint">Ctrl+Enter roda a célula focada</span>
+        </div>
+        <div id="cells" class="cells"></div>
+      </main>
+    </div>
+
+    <div id="settings-modal" class="modal hidden">
+      <form id="settings-form" class="modal-content">
+        <h2>Configurações de conexão</h2>
+        <p class="hint">
+          Nada aqui é enviado a nenhum servidor além do Proxy URL abaixo, e fica
+          salvo somente no seu navegador.
+        </p>
+
+        <label
+          >Tipo de banco
+          <select id="setting-db-type">
+            <option value="postgres">PostgreSQL</option>
+            <option value="mysql">MySQL</option>
+            <option value="mssql">SQL Server</option>
+          </select>
+        </label>
+
+        <label
+          >Connection string
+          <input
+            id="setting-connection-string"
+            type="password"
+            placeholder="postgres://usuario:senha@host:5432/banco"
+            autocomplete="off"
+          />
+        </label>
+
+        <label
+          >Proxy URL
+          <input
+            id="setting-proxy-url"
+            type="text"
+            placeholder="https://seu-proxy.vercel.app/api/query"
+            autocomplete="off"
+          />
+        </label>
+        <p class="hint warning">
+          Sua connection string é enviada para este endpoint a cada consulta.
+          Use um proxy que você controla para dados sensíveis.
+        </p>
+
+        <div class="modal-actions">
+          <button type="button" id="close-settings">Cancelar</button>
+          <button type="submit">Salvar</button>
+        </div>
+      </form>
+    </div>
+
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
