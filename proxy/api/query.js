@@ -6,15 +6,13 @@ import { DRIVERS } from "../lib/drivers/index.js";
 const MAX_ROWS = 1000;
 const QUERY_TIMEOUT_MS = 12000;
 
-// Em produção: ALLOWED_ORIGINS="https://seu-usuario.github.io"
-// Deixe vazio em dev para liberar qualquer origem.
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
-
 export default async function handler(req, res) {
-  applyCors(req, res);
+  // Qualquer site aberto no navegador consegue mandar requisição para o proxy local;
+  // origem desconhecida é recusada antes de qualquer outra coisa.
+  if (!applyCors(req, res)) {
+    res.status(403).json({ error: "Origem não permitida." });
+    return;
+  }
 
   if (req.method === "OPTIONS") {
     res.status(204).end();
@@ -83,18 +81,27 @@ export default async function handler(req, res) {
   }
 }
 
+// Origens aceitas: as locais (o próprio QueryIt rodando na máquina) e as listadas em
+// ALLOWED_ORIGINS, ex. em produção ALLOWED_ORIGINS="https://seu-usuario.github.io".
+// Lista vazia NÃO libera tudo: o padrão é só local.
+// Sem cabeçalho Origin (curl, servidor) não é navegador, então CORS não se aplica; o que
+// protege esse caso é o proxy local escutar só em 127.0.0.1 (proxy/server.js).
+// Devolve false quando a origem deve ser recusada.
 function applyCors(req, res) {
   const origin = req.headers.origin;
-  const allowed =
-    ALLOWED_ORIGINS.length === 0 ||
-    (origin && ALLOWED_ORIGINS.includes(origin)) ||
-    (origin && isLocalOrigin(origin));
+  if (origin === undefined) return true;
 
-  if (allowed) {
-    res.setHeader("Access-Control-Allow-Origin", origin || "*");
-  }
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (!allowedOrigins.includes(origin) && !isLocalOrigin(origin)) return false;
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  return true;
 }
 
 function isLocalOrigin(origin) {

@@ -1,4 +1,4 @@
-import { test, describe, before } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { callHandler } from './helpers/call-handler.js';
 import { DATABASES, MANY_ROWS, isReachable, seed } from './helpers/databases.js';
@@ -35,6 +35,66 @@ describe('POST /api/query: validação (sem banco)', () => {
     });
     assert.equal(status, 400);
     assert.match(body.error, /SELECT/);
+  });
+
+  // Qualquer site aberto no navegador consegue mandar requisição para o proxy local.
+  // Origem que não é local nem está em ALLOWED_ORIGINS é recusada antes de tocar em banco.
+  describe('CORS', () => {
+    const body = { dbType: 'postgres', connectionString: 'postgres://u:p@127.0.0.1:1/d', sql: 'select 1' };
+    let previous;
+    before(() => {
+      previous = process.env.ALLOWED_ORIGINS;
+      delete process.env.ALLOWED_ORIGINS;
+    });
+    after(() => {
+      if (previous === undefined) delete process.env.ALLOWED_ORIGINS;
+      else process.env.ALLOWED_ORIGINS = previous;
+    });
+
+    test('origem estrangeira é recusada (POST)', async () => {
+      const res = await callHandler(body, { headers: { origin: 'https://evil.example' } });
+      assert.equal(res.status, 403);
+      assert.equal(res.headers['access-control-allow-origin'], undefined);
+    });
+
+    test('origem estrangeira é recusada (preflight)', async () => {
+      const res = await callHandler(undefined, { method: 'OPTIONS', headers: { origin: 'https://evil.example' } });
+      assert.equal(res.status, 403);
+    });
+
+    test('origem "null" (iframe sandbox, file://) é recusada', async () => {
+      const res = await callHandler(body, { headers: { origin: 'null' } });
+      assert.equal(res.status, 403);
+    });
+
+    for (const origin of ['http://localhost:5500', 'http://127.0.0.1:5500', 'http://[::1]:5500']) {
+      test(`origem local é aceita: ${origin}`, async () => {
+        const res = await callHandler(undefined, { method: 'OPTIONS', headers: { origin } });
+        assert.equal(res.status, 204);
+        assert.equal(res.headers['access-control-allow-origin'], origin);
+      });
+    }
+
+    test('origem listada em ALLOWED_ORIGINS é aceita', async () => {
+      process.env.ALLOWED_ORIGINS = 'https://meu-usuario.github.io';
+      try {
+        const res = await callHandler(undefined, { method: 'OPTIONS', headers: { origin: 'https://meu-usuario.github.io' } });
+        assert.equal(res.status, 204);
+        assert.equal(res.headers['access-control-allow-origin'], 'https://meu-usuario.github.io');
+      } finally {
+        delete process.env.ALLOWED_ORIGINS;
+      }
+    });
+
+    test('origem parecida com local não engana: http://localhost.evil.example', async () => {
+      const res = await callHandler(body, { headers: { origin: 'http://localhost.evil.example' } });
+      assert.equal(res.status, 403);
+    });
+
+    test('sem Origin (curl, servidor) segue para a validação normal', async () => {
+      const res = await callHandler({ dbType: 'oracle' });
+      assert.equal(res.status, 400);
+    });
   });
 
   test('erro nunca devolve a senha da connection string', async () => {

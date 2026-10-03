@@ -107,11 +107,13 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | Files | `proxy/server.js` (HTTP and the JSON body), `proxy/api/query.js` (handler), `proxy/lib/*` (guards), `proxy/lib/drivers/*` (`index.js` is the registry; only the handler imports it) |
 | Request | `{ dbType: 'postgres' \| 'mysql' \| 'mssql', connectionString, sql }` |
 | 200 | `{ columns: string[], rows: any[][], rowCount, elapsedMs, truncated }` (`truncated` when `rowCount >= 1000`) |
-| Errors | `{ error }` with 400 (validation, guard, SSRF, database error), 405 (not POST), 429 (rate limit: 30 per minute per IP), 404 (other paths) |
+| Errors | `{ error }` with 400 (validation, guard, SSRF, database error), 403 (origin not allowed), 405 (not POST), 429 (rate limit: 30 per minute per IP), 404 (other paths) |
+| CORS | A browser `Origin` must be local (`localhost`, `127.0.0.1`, `[::1]`, any port) or listed in `ALLOWED_ORIGINS` (comma-separated, read on each request). Otherwise 403 before anything else runs, including preflight. An empty list means local-only. Requests without `Origin` (curl) skip CORS. |
+| Listens on | `127.0.0.1:3000` (`HOST`/`PORT` override) |
 | Order | CORS → rate limit → validation → `assertReadOnly` → `parseConnection` → `assertHostIsSafe` → `runQuery` (read-only, 1000-row cap) → 12s timeout. See CLAUDE.md invariants 1–2. |
 
 **Exercise without the UI:** `callHandler()` in `proxy/test/helpers/call-handler.js`, or `curl -X POST localhost:3000/api/query -H 'Content-Type: application/json' -d '{...}'`.
-**Messages:** `dbType inválido…` · `connectionString é obrigatório.` · `sql é obrigatório.` · `SQL inválido: …` · `Apenas um comando por execução é permitido.` · `Somente consultas SELECT são permitidas (recebido: X).` · `SELECT ... INTO não é permitido.` · `Função não permitida: X.` · `Conexão recusada: host resolve para um endereço não permitido (…)` · `Muitas requisições…` · `Tempo limite da consulta excedido.` · `JSON inválido.` (from `server.js`) · Postgres `cannot execute X in a read-only transaction`.
+**Messages:** `Origem não permitida.` · `dbType inválido…` · `connectionString é obrigatório.` · `sql é obrigatório.` · `SQL inválido: …` · `Apenas um comando por execução é permitido.` · `Somente consultas SELECT são permitidas (recebido: X).` · `SELECT ... INTO não é permitido.` · `Função não permitida: X.` · `Conexão recusada: host resolve para um endereço não permitido (…)` · `Muitas requisições…` · `Tempo limite da consulta excedido.` · `JSON inválido.` (from `server.js`) · Postgres `cannot execute X in a read-only transaction`.
 
 ## Shared helpers (`js/lib/`)
 
@@ -125,7 +127,8 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | | |
 |---|---|
 | Files | `server.js` |
-| Behavior | serves project files on 5500. `/` maps to `index.html`. Returns 404 outside the root and for anything under `proxy/`. MIME types come from a fixed table. |
+| Behavior | serves on `127.0.0.1:5500` (`HOST`/`PORT` override). `/` maps to `index.html`. Only `index.html`, `css/**` and `js/**` are public (an allowlist); everything else, including malformed URLs, gets 404. MIME types come from a fixed table. |
+| Tests | `test/servers.test.js` starts both servers and checks they can't be reached from the LAN address, plus the allowlist |
 
 ---
 

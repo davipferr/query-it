@@ -47,12 +47,12 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
    - **`proxy/lib/sql-guard.js`** parses the SQL into an AST. It allows exactly one `SELECT` and rejects `INTO` and a denylist of dangerous functions. `js/sql-guard.js` is only a fast regex pre-check for UX. Never move trust to the client, and never import the client guard from the proxy.
    - **The driver** runs the query in a read-only transaction (SQL Server: a transaction that is always rolled back) and caps the rows on the server: Postgres uses a cursor with `FETCH`, MySQL `sql_select_limit`, SQL Server `SET ROWCOUNT`. Never rewrite the user's SQL to add `LIMIT` or `TOP`.
    - **In production**, the database user should only have `SELECT` permission. The denylist will always miss something, such as dynamic SQL inside a function.
-2. **Every proxy request goes through all its guards, in order:** CORS → rate limit → input validation → `assertReadOnly` → `driver.parseConnection` → `assertHostIsSafe` (SSRF) → `driver.runQuery` (read-only, row cap) → timeout. The driver must connect with **exactly** the config returned by `parseConnection`. Never pass the raw connection string to a database library, because its query parameters (`?host=`, `?socketPath=`, a repeated `Server=`) would connect somewhere the SSRF guard never checked.
+2. **Every proxy request goes through all its guards, in order:** CORS (unknown `Origin` → 403) → rate limit → input validation → `assertReadOnly` → `driver.parseConnection` → `assertHostIsSafe` (SSRF) → `driver.runQuery` (read-only, row cap) → timeout. The driver must connect with **exactly** the config returned by `parseConnection`. Never pass the raw connection string to a database library, because its query parameters (`?host=`, `?socketPath=`, a repeated `Server=`) would connect somewhere the SSRF guard never checked.
 3. **Errors returned to the client go through `sanitizeError`**, so a connection string never leaks.
-4. **`ALLOW_PRIVATE_HOSTS=true` is a local-only default** (set in `proxy/server.js`). Production must run with it `false`.
+4. **The local servers are local.** Both `server.js` and `proxy/server.js` listen on `127.0.0.1` unless `HOST` is set. `ALLOW_PRIVATE_HOSTS=true` is a local-only default (set in `proxy/server.js`); production must run with it `false`. The proxy accepts browser requests only from local origins and the ones listed in `ALLOWED_ORIGINS`; an empty list means local-only, **never** "allow all". `test/servers.test.js` and the CORS tests in `proxy/test/query.test.js` enforce this.
 5. **Database data is text, never HTML.** Build DOM only with `h()`/`show()`/`showMessage()` from `js/lib/dom.js`; they always insert text nodes.
 6. **`new Function` in `js/notebook/js-cell.js` is intentional** (it runs user-written JS cells). Don't use it, or `eval`, anywhere else.
-7. **`server.js` must never serve files from `proxy/`** or from outside the project root.
+7. **`server.js` serves only `index.html`, `css/` and `js/`.** It's an allowlist, so `.git/`, `.claude/`, `docs/`, `proxy/`, `node_modules/` and any new folder stay private. A new public folder means adding it to `PUBLIC_DIRS` deliberately.
 
 ## Where things live
 
@@ -81,8 +81,8 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 
 ## Known residual risks (not fixed yet)
 
-- **Any website can use a running local proxy.** With `ALLOWED_ORIGINS` empty (the default), CORS reflects every origin, so a page on any site can `POST /api/query` and read the results. It only has to guess local credentials, such as `postgres:postgres@localhost`. Verified 2026-10-03 with `Origin: https://evil.example`, which got 200 and the rows.
-- **The local proxy listens on all interfaces** (`0.0.0.0:3000`) with `ALLOW_PRIVATE_HOSTS=true`, so other machines on the network can use it to reach your private network.
+- **Any local origin passes the proxy CORS check, on any port.** Another app you run on `http://localhost:8080` (or one with an XSS hole) could use the proxy. Narrowing it to the QueryIt frontend's port would break `npm run dev` on a custom `PORT`.
+
 
 - **DNS rebinding:** the SSRF guard resolves the host, then the driver resolves it again. Only matters with `ALLOW_PRIVATE_HOSTS=false`, i.e. a public deploy.
 - **MySQL:** an explicit `LIMIT` larger than 1000 overrides `sql_select_limit`. The rows are trimmed afterwards, but the server still sends them all.

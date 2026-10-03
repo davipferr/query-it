@@ -7,6 +7,9 @@ process.env.ALLOW_PRIVATE_HOSTS ??= "true";
 const { default: handler } = await import("./api/query.js");
 
 const PORT = Number(process.env.PORT) || 3000;
+// Só esta máquina: com ALLOW_PRIVATE_HOSTS=true, escutar na rede deixaria qualquer vizinho
+// usar o proxy para chegar nos bancos da sua rede privada. HOST=0.0.0.0 só se você sabe o porquê.
+const HOST = process.env.HOST || "127.0.0.1";
 
 const server = http.createServer(async (req, res) => {
   const { pathname } = new URL(req.url, `http://${req.headers.host}`);
@@ -26,8 +29,8 @@ const server = http.createServer(async (req, res) => {
   await handler(req, res);
 });
 
-server.listen(PORT, () => {
-  console.log(`Proxy rodando em http://localhost:${PORT}/api/query`);
+server.listen(PORT, HOST, () => {
+  console.log(`Proxy rodando em http://${HOST}:${PORT}/api/query`);
 });
 
 // O handler usa a API estilo Express (res.status().json()).
