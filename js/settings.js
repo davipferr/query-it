@@ -3,9 +3,9 @@ const STORAGE_KEY = 'queryit.settings';
 const DEFAULTS = {
   dbType: 'postgres',
   connectionString: '',
-  // Servido pelo proxy/server.js local -> usa o proxy da mesma origem.
+  // Rodando localmente -> usa o proxy local (cd proxy && npm start).
   proxyUrl: ['localhost', '127.0.0.1'].includes(location.hostname)
-    ? `${location.origin}/api/query`
+    ? 'http://localhost:3000/api/query'
     : '',
 };
 
