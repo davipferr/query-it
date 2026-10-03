@@ -44,11 +44,19 @@ export function createTable(container, rows) {
     container.innerHTML = '<div class="empty">Sem dados.</div>';
     return;
   }
+  // Nomes de coluna e valores vêm do banco: sempre como texto, nunca HTML.
   const columns = Object.keys(rows[0]);
   const table = document.createElement("table");
-  table.innerHTML = `
-    <thead><tr>${columns.map((c) => `<th>${c}</th>`).join("")}</tr></thead>
-    <tbody>${rows.map((r) => `<tr>${columns.map((c) => `<td>${r[c] ?? "NULL"}</td>`).join("")}</tr>`).join("")}</tbody>
-  `;
+  const headRow = table.createTHead().insertRow();
+  for (const c of columns) {
+    const th = document.createElement("th");
+    th.textContent = c;
+    headRow.appendChild(th);
+  }
+  const body = table.createTBody();
+  for (const r of rows) {
+    const tr = body.insertRow();
+    for (const c of columns) tr.insertCell().textContent = r[c] ?? "NULL";
+  }
   container.appendChild(table);
 }

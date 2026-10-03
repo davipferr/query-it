@@ -15,7 +15,7 @@ Browser notebook for querying databases: SQL cells run through a local proxy, JS
 |---|---|
 | Run both servers | `npm run dev` |
 | Frontend only / proxy only | `npm start` / `npm start --prefix proxy` |
-| Lint (syntax check for now; ESLint later) | `npm run lint` |
+| Lint (syntax check + feature-map coverage; ESLint later) | `npm run lint` |
 | Tests (`node:test`) | `npm test` |
 | **Everything; run before saying a task is done** | `npm run check` |
 | Test databases (Docker): Postgres / all three | `npm run db:up` / `npm run db:up:all` |
@@ -47,6 +47,8 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 
 ## Where things live
 
+**`docs/feature-map.md`** is the detailed map: DOM ids and selectors, how to drive each feature, state, the proxy contract, every user-facing message, and known bugs. Read it before reproducing a bug or verifying UI. Update it in the same change when you touch the UI, the messages or the API (`npm run lint` checks that every id and source file is listed).
+
 | Feature | Files |
 |---|---|
 | App wiring | `js/app.js` |
@@ -74,6 +76,7 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 ## Working rules
 
 - **Read the code before naming a cause.** Don't guess; cite `file:line`.
+- **Bug reports go through the `repro-bug` skill:** reproduce it, prove it fails, then fix it.
 - **Verify before you report.** Run `npm run check`. For any UI change, also open the app in the browser and exercise the feature. Say what you saw, not what you expect.
 - **Code comments are in Portuguese** and explain *why*. Don't write history in comments ("changed X because…"); that belongs in the commit message. Don't leave commented-out code.
 - Match the surrounding style. Quotes vary per file (single vs double); follow the file you're in.

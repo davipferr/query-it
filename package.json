@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node scripts/dev.js",
-    "lint": "node scripts/check-syntax.js",
+    "lint": "node scripts/check-syntax.js && node scripts/check-feature-map.js",
     "test": "node --test \"test/**/*.test.js\" \"proxy/test/**/*.test.js\"",
     "check": "npm run lint && npm test",
     "db:up": "docker compose up -d --wait",

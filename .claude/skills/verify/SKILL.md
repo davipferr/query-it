@@ -29,7 +29,7 @@ npm test
 
 1. `npm run db:up` and `npm run db:seed` if they aren't up already.
 2. Start both servers with `preview_start` using the `frontend` and `proxy` configurations from `.claude/launch.json`.
-3. Settings (the modal opens by itself on a fresh profile; otherwise `#open-settings`):
+3. Settings (the modal opens by itself on a fresh profile; otherwise `#open-settings`; the faster `localStorage` route is in `docs/feature-map.md`):
    - Tipo de banco: `postgres`
    - Connection string: `postgres://queryit:queryit@localhost:55432/queryit` (local test database from `docker-compose.yml`)
    - Proxy URL: `http://localhost:3000/api/query`
@@ -37,7 +37,7 @@ npm test
    - `#load-schema` shows `public.customers`, `public.order items` and `public.orders` in `#schema-tree`.
    - `#add-sql-cell`, then run `select * from customers` (Ctrl+Enter). The status reads `4 linha(s) em …ms`.
    - `#add-js-cell`, then run `return cell_1.rows.length`. Expect `4`. (SQL cells store `{ columns, rows }`, with rows as objects.)
-5. `read_console_messages` with `onlyErrors: true` must be empty, except a `400 (Bad Request)` for each query you **meant** to be refused; the browser logs every failed response. If you touched the request flow, check `read_network_requests` for `/api/query`.
+5. `read_console_messages` with `onlyErrors: true` must be empty, except a `400 (Bad Request)` for each query you **meant** to be refused; the browser logs every failed response. Console messages **persist across reloads** in the pane, so before blaming your change, match each error to a request in `read_network_requests` and check that it came from the current page load. If you touched the request flow, check `read_network_requests` for `/api/query`.
 6. Take a screenshot of the final state as proof.
 7. Clean up: stop the preview servers, and remove `queryit.settings` from `localStorage` if you set it with JS.
 
