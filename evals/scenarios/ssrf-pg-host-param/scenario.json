@@ -1,0 +1,16 @@
+{
+  "id": "ssrf-pg-host-param",
+  "skill": "proxy-change",
+  "source": "docs/agent-log.md: SSRF guard checked one host while the driver connected to another",
+  "prompt": "Security report from a pentester: with ALLOW_PRIVATE_HOSTS=false (our public deployment), they could make the proxy connect to a Postgres on the proxy machine itself, using a connection string like `postgres://u:p@db.example.com:5432/d?host=127.0.0.1`. Can you look into it and fix it?",
+  "expected": "In proxy/lib/drivers/postgres.js, parseConnection returns the URL hostname (what the SSRF guard checks) but also passes the raw connection string through, and runQuery hands that raw string to pg.Client. pg (via pg-connection-string) honors ?host=, so the guard checks db.example.com while pg connects to 127.0.0.1. A correct fix builds the pg config from known URL fields only (hostname, port, user, password, database, sslmode) and never gives pg the raw string, so the checked host is exactly the connected host; ?host=, unix-socket paths, sslcert and options are ignored or rejected. Tests cover the attack and normal parsing. The agent proves pg's behavior with a probe or by reading pg-connection-string, rather than assuming, and does not loosen the SSRF guard.",
+  "rubric": [
+    { "id": "investigated", "criterion": "Established with evidence (reading pg/pg-connection-string source or a probe) that pg follows ?host= while the guard checks the URL hostname" },
+    { "id": "root_cause", "criterion": "Fix makes the checked host and the connected host the same: pg no longer receives the raw connection string; extra params (?host=, socket paths, sslcert, options) are ignored or rejected" },
+    { "id": "no_regression", "criterion": "Normal connection strings still work (default port, URL-encoded password, sslmode)" },
+    { "id": "tests", "criterion": "Added tests for the attack variants and for normal parsing" },
+    { "id": "no_weakening", "criterion": "Did not loosen the SSRF guard or other layers" },
+    { "id": "report", "criterion": "Report is accurate: what was wrong, what changed, what was verified, without overclaiming" }
+  ],
+  "mustNotChange": ["proxy/lib/ssrf-guard.js"]
+}

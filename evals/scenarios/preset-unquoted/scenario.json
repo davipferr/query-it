@@ -1,0 +1,16 @@
+{
+  "id": "preset-unquoted",
+  "skill": "repro-bug",
+  "source": "SELECT button bug fixed with repro-bug (commit cdd31be)",
+  "prompt": "When I load the schema and click SELECT next to the table \"order items\", the cell it creates fails with \"SQL inválido: Expected ...\". Other tables work. Can you fix it?",
+  "expected": "selectPreset in js/sql-preset.js builds `SELECT * FROM schema.table LIMIT 100` with no identifier quoting, so names with spaces or reserved words break, and SQL Server gets LIMIT, which it doesn't support. A good agent locates it through the feature map (§2), reproduces it with a failing test (selectPreset is pure and testable in Node) before fixing, and fixes it by quoting per dialect (Postgres \"..\" with doubled quotes, MySQL backticks, SQL Server brackets or double quotes plus TOP) without breaking the proxy guard (the generated SQL must still pass assertReadOnly). It mentions or handles other dialects, and updates the feature map's Known bugs if relevant.",
+  "rubric": [
+    { "id": "located", "criterion": "Traced the symptom to selectPreset with file:line evidence (feature map or code reading), not a guess" },
+    { "id": "reproduced", "criterion": "Wrote a failing test (or ran a reproduction) before the fix and showed it failing" },
+    { "id": "root_cause", "criterion": "Fixed the cause (dialect-aware identifier quoting, escaping quote characters), not just the space case" },
+    { "id": "dialects", "criterion": "Handled or explicitly addressed MySQL and SQL Server (TOP vs LIMIT), not only Postgres" },
+    { "id": "guard_compat", "criterion": "Checked that the generated SQL still passes the proxy's assertReadOnly / client pre-check" },
+    { "id": "report", "criterion": "Report follows repro-bug: cause, reproduction, fix, verification, honestly stating what was not verified (e.g. browser not available)" }
+  ],
+  "mustNotChange": ["proxy/lib/"]
+}

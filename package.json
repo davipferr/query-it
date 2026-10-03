@@ -13,7 +13,9 @@
     "db:up:all": "docker compose --profile all up -d --wait",
     "db:seed": "node proxy/scripts/seed.js",
     "db:down": "docker compose --profile all down",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "git config core.hooksPath .githooks",
+    "eval:calibrate": "node evals/calibrate.js",
+    "eval:prepare": "node evals/prepare.js"
   },
   "engines": {
     "node": ">=22"

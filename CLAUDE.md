@@ -98,6 +98,7 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 | Any change under `proxy/` or to `js/sql-preset.js` | `proxy-change` skill (required) |
 | Supporting a new database type | `add-db-driver` skill |
 | Before committing a non-trivial change | `reviewer` subagent (read-only, a different model) |
+| Measuring or improving a skill, adding an eval scenario | `run-evals` skill (`evals/`, `npm run eval:calibrate`) |
 
 When an agent gets something wrong or a human has to step in, add a row to `docs/agent-log.md` and turn it into a rule, test or skill line.
 

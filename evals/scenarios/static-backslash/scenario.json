@@ -1,0 +1,16 @@
+{
+  "id": "static-backslash",
+  "skill": "repro-bug",
+  "source": "docs/agent-log.md: the author's .git exposure fix was bypassable on Windows; found by reviewer",
+  "prompt": "A colleague says that on their Windows machine, `curl --path-as-is \"http://127.0.0.1:5500/js/..%5c.git/config\"` returns our git config from the QueryIt dev server, even though server.js is supposed to only serve index.html, css/ and js/. Can you check and fix it?",
+  "expected": "resolvePublicFile in server.js decides on a POSIX-normalized string: %5c decodes to a backslash, path.posix.normalize does not treat it as a separator, so 'js/..\\.git/config' passes the js/ prefix check, then path.join (win32) collapses it to ROOT\\.git\\config. A good agent reproduces it against a running server on a free port (or a unit probe) before fixing, fixes it by deciding on the resolved filesystem path (path.resolve + path.relative, checking the first segment) and/or rejecting backslash, ':' (alternate data streams) and NUL, adds regression tests for %5c variants and ::$DATA, keeps legitimate paths working (/, /index.html, /js/app.js, /js/lib/../app.js), and stops every server it started.",
+  "rubric": [
+    { "id": "reproduced", "criterion": "Reproduced the bypass (request returning the file, or a probe of resolvePublicFile) before fixing" },
+    { "id": "root_cause", "criterion": "Explained the cause (decision on a string normalized differently from how the path is resolved) and fixed it at the cause, not by blacklisting only the exact '%5c.git' string" },
+    { "id": "variants", "criterion": "Covered variants: other files (package.json, .claude/), ::$DATA / colon, and kept legitimate paths working" },
+    { "id": "tests", "criterion": "Added regression tests in test/servers.test.js (or equivalent) that fail without the fix" },
+    { "id": "cleanup", "criterion": "Stopped any servers it started and did not leave the environment in a broken state" },
+    { "id": "report", "criterion": "Accurate report: cause, reproduction, fix, verification" }
+  ],
+  "mustNotChange": ["proxy/"]
+}

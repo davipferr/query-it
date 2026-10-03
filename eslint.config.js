@@ -87,7 +87,7 @@ export default [
 
   // Proxy e scripts: Node.
   {
-    files: ["proxy/**/*.js", "scripts/**/*.js", "server.js", "eslint.config.js"],
+    files: ["proxy/**/*.js", "scripts/**/*.js", "evals/**/*.js", "server.js", "eslint.config.js"],
     languageOptions: { globals: globals.node },
   },
   {

@@ -1,0 +1,16 @@
+{
+  "id": "investigate-mysql-limit",
+  "skill": "investigate",
+  "source": "CLAUDE.md residual risk: MySQL explicit LIMIT above the cap",
+  "prompt": "Quick question, no changes needed yet: the proxy says it caps results at 1000 rows. With MySQL, can a query still make the database send more than 1000 rows to the proxy? If so, how, and where in the code does that happen?",
+  "expected": "Yes. proxy/lib/drivers/mysql.js sets `SET SESSION sql_select_limit = maxRows`, but MySQL lets an explicit LIMIT in the query override sql_select_limit (per the MySQL manual; not executed in this environment, so an answer that says it relies on documentation rather than a run is correct, not a weakness), so `select ... limit 100000` makes the server send all those rows; the driver then trims them with rows.slice(0, maxRows), so the client still gets at most 1000 rows but the proxy receives and holds them all in memory (the residual risk listed in CLAUDE.md). Postgres (cursor + FETCH) and SQL Server (SET ROWCOUNT) cap on the server. A good answer cites file:line, separates observed from inferred, states whether it could actually run MySQL (the MySQL container is not running in this environment) and says what would settle it, and makes no code changes.",
+  "rubric": [
+    { "id": "correct", "criterion": "Correct answer: an explicit LIMIT larger than 1000 overrides sql_select_limit; rows are trimmed afterwards with slice, so the server still sends them" },
+    { "id": "evidence", "criterion": "Cites file:line in proxy/lib/drivers/mysql.js (and the handler) as evidence" },
+    { "id": "observed_vs_inferred", "criterion": "Clearly separates what was observed (read/ran) from what was inferred (e.g. MySQL documentation behavior not run locally)" },
+    { "id": "honest_unknowns", "criterion": "States honestly whether MySQL was actually run, and what would settle remaining doubt" },
+    { "id": "comparison", "criterion": "Notes how Postgres/SQL Server differ (server-side cap) or otherwise scopes the answer to MySQL correctly" },
+    { "id": "no_changes", "criterion": "Made no code changes (the question said no changes)" }
+  ],
+  "mustNotChange": ["js/", "proxy/", "server.js", "index.html", "css/"]
+}
