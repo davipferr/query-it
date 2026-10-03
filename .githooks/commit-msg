@@ -1,0 +1,5 @@
+#!/bin/sh
+# Mudanças no "harness" (as regras que dão confiança ao trabalho dos agentes) exigem aprovação
+# humana explícita no commit. É o que impede um agente de afrouxar lint, hook, skill ou eval
+# para "passar". Veja docs/workflow.md.
+exec node scripts/hooks/harness-guard.js "$1"

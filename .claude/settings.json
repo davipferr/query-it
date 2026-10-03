@@ -35,6 +35,17 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/hooks/check-on-stop.js",
+            "timeout": 300
+          }
+        ]
+      }
     ]
   }
 }

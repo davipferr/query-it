@@ -15,7 +15,10 @@
     "db:down": "docker compose --profile all down",
     "prepare": "git config core.hooksPath .githooks",
     "eval:calibrate": "node evals/calibrate.js",
-    "eval:prepare": "node evals/prepare.js"
+    "eval:prepare": "node evals/prepare.js",
+    "agent:setup": "node proxy/scripts/worktree.js setup",
+    "agent:teardown": "node proxy/scripts/worktree.js teardown",
+    "trust:report": "node scripts/trust-report.js"
   },
   "engines": {
     "node": ">=22"

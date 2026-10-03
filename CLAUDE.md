@@ -102,6 +102,10 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 
 When an agent gets something wrong or a human has to step in, add a row to `docs/agent-log.md` and turn it into a rule, test or skill line.
 
+**How much a human reviews, and when that changes:** see `docs/workflow.md` (the trust ladder, `npm run trust:report`, parallel worktrees with `npm run agent:setup` / `agent:teardown`).
+
+**The harness is protected.** Commits touching `eslint.config.js`, `.githooks/`, `scripts/hooks/`, `scripts/check-*.js`, `.claude/settings.json`, `.claude/agents/`, `.claude/skills/`, `CLAUDE.md`, the eval scenarios or scorer, or `.gitattributes` are refused without the line `Harness-Change: approved by <name>`. Add that line **only** when the user approved that harness change in this conversation, and never to get a commit through. A Stop hook also re-runs `npm run check` when you finish a turn with uncommitted code; if it's red, fix it or tell the user exactly what's broken.
+
 ## Working rules
 
 - **Read the code before naming a cause.** Don't guess; cite `file:line`.

@@ -4,6 +4,14 @@ import pg from 'pg';
 import mysql from 'mysql2/promise';
 import mssql from 'mssql';
 
+// Cada worktree de agente tem seu próprio banco (npm run agent:setup grava o .env.test na raiz
+// do checkout). Sem isso, dois agentes rodando testes ao mesmo tempo apagam o seed um do outro.
+try {
+  process.loadEnvFile(new URL('../../../.env.test', import.meta.url));
+} catch {
+  // checkout principal: usa os bancos padrão
+}
+
 export const DATABASES = {
   postgres: process.env.QUERYIT_TEST_POSTGRES || 'postgres://queryit:queryit@localhost:55432/queryit',
   mysql: process.env.QUERYIT_TEST_MYSQL || 'mysql://queryit:queryit@localhost:53306/queryit',
@@ -76,8 +84,7 @@ function inserts(dbType) {
   return [rows('customers', CUSTOMERS), rows('orders', ORDERS), rows('order items', ORDER_ITEMS)];
 }
 
-async function withConnection(dbType, fn) {
-  const url = DATABASES[dbType];
+async function withConnection(dbType, fn, url = DATABASES[dbType]) {
   if (dbType === 'postgres') {
     const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 2000 });
     await client.connect();
@@ -121,8 +128,9 @@ export async function isReachable(dbType) {
   }
 }
 
-export async function seed(dbType) {
+// url explícita: o agent:setup semeia o banco do worktree antes de o .env.test existir.
+export async function seed(dbType, url = DATABASES[dbType]) {
   await withConnection(dbType, async (run) => {
     for (const sql of [...DDL[dbType], ...inserts(dbType)]) await run(sql);
-  });
+  }, url);
 }

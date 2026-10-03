@@ -1,4 +1,6 @@
 /.claude/settings.local.json
 node_modules/
+# Banco exclusivo de um worktree de agente (npm run agent:setup).
+.env.test
 # Artefatos de cada execução de eval (workspaces ficam no %TEMP%).
 /evals/runs/
