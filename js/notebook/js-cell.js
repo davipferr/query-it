@@ -12,8 +12,10 @@ export function runJsCell({ code, outputEl, statusEl }) {
 
   const started = performance.now();
   try {
-    const fn = new Function("charts", "el", "console", ...names, code);
-    const result = fn(charts, outputEl, console, ...values);
+    // `vars` vem antes das variáveis para que uma célula chamada "vars" a sobrescreva.
+    // É uma cópia rasa: reatribuir uma chave dentro da célula não altera o kernel.
+    const fn = new Function("charts", "el", "console", "vars", ...names, code);
+    const result = fn(charts, outputEl, console, { ...state }, ...values);
     const elapsed = Math.round(performance.now() - started);
     statusEl.textContent = `OK em ${elapsed}ms`;
 

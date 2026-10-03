@@ -83,12 +83,12 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | | |
 |---|---|
 | Files | `js/notebook/js-cell.js`, `js/notebook/kernel-state.js` |
-| Execution | `new Function('charts', 'el', 'console', ...varNames, code)`. This is intentional; it runs the user's own code. |
-| In scope | every SQL cell variable (`{ columns, rows }`, with `rows` as objects keyed by column), `charts` (§6), `el` (this cell's `.cell-output`), `console` |
+| Execution | `new Function('charts', 'el', 'console', 'vars', ...varNames, code)`. This is intentional; it runs the user's own code. |
+| In scope | every SQL cell variable (`{ columns, rows }`, with `rows` as objects keyed by column), `vars` (a shallow copy of the whole kernel state, name → value; a cell named `vars` shadows it), `charts` (§6), `el` (this cell's `.cell-output`), `console` |
 | Output | a non-`undefined` return value is shown in a `<pre>` (objects as pretty JSON). Errors appear in `.error`. |
 | Status | `OK em Xms` · `Erro` |
 
-**Exercise:** after the SQL cell `cell_1` returns customers, `return cell_1.rows.length` gives `4`.
+**Exercise:** after the SQL cell `cell_1` returns customers, `return cell_1.rows.length` gives `4`, and `return Object.keys(vars)` lists `["cell_1"]`.
 **Notes:** JS cells only read state; they don't create variables. The code runs synchronously; a returned Promise is shown as `{}`.
 
 ## 6. Charts (`charts` inside JS cells)
