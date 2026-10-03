@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { assertReadOnly, applyRowLimit } from '../lib/sql-guard.js';
+import { assertReadOnly } from '../lib/sql-guard.js';
 
 const allows = (sql, db = 'postgres') => assert.doesNotThrow(() => assertReadOnly(sql, db), sql);
 const blocks = (sql, db = 'postgres') => assert.throws(() => assertReadOnly(sql, db), Error, sql);
@@ -17,6 +17,8 @@ describe('assertReadOnly: consultas legítimas passam', () => {
       '/* comentário */ select 1',
       'select 1 -- ; drop table customers',
       'select * from "order items"',
+      'select upper(name), count(*), now() from customers group by name',
+      'select into_date from agenda',
     ],
     mysql: ['select 1', 'select * from `order items`', 'select count(*) from orders group by status'],
     mssql: ['select 1', 'select top 5 * from customers', 'select * from [order items]'],
@@ -59,46 +61,22 @@ describe('assertReadOnly: escrita e comandos empilhados são bloqueados', () => 
   test('dbType desconhecido', () => blocks('select 1', 'oracle'));
 });
 
-// Brechas conhecidas: o parser aceita como "select", mas o comando escreve ou tem efeito colateral.
-// Ficam como todo até a correção; quando corrigidas, removam o `todo`.
-describe('assertReadOnly: brechas conhecidas', () => {
-  const gaps = [
-    ['postgres', 'select * into copia from customers', 'SELECT INTO cria tabela'],
-    ['mysql', 'select * from customers into outfile \'/tmp/x\'', 'INTO OUTFILE grava arquivo no servidor'],
-    ['postgres', 'select set_config(\'search_path\', \'x\', false)', 'função com efeito colateral'],
-    ['postgres', 'select pg_terminate_backend(1)', 'função com efeito colateral'],
-    ['postgres', 'select lo_import(\'/etc/passwd\')', 'função com efeito colateral'],
-    ['postgres', 'select dblink_exec(\'x\', \'drop table y\')', 'escreve por outra conexão'],
+describe('assertReadOnly: SELECT INTO e funções com efeito colateral são bloqueados', () => {
+  const cases = [
+    ['postgres', 'select * into copia from customers'],
+    ['postgres', 'select 1 union select * into copia from customers'],
+    ['mysql', "select * from customers into outfile '/tmp/x'"],
+    ['mysql', "select * into dumpfile '/tmp/x' from customers"],
+    ['postgres', "select set_config('search_path', 'x', false)"],
+    ['postgres', "select pg_catalog.set_config('search_path', 'x', false)"],
+    ['postgres', 'select pg_terminate_backend(1)'],
+    ['postgres', "select lo_import('/etc/passwd')"],
+    ['postgres', "select pg_read_file('/etc/passwd')"],
+    ['postgres', "select dblink_exec('x', 'drop table y')"],
+    ['postgres', "select * from customers where exists (select dblink('x', 'select 1'))"],
+    ['postgres', "with x as (select query_to_xml('select 1', true, true, '')) select * from x"],
+    ['postgres', 'select pg_advisory_lock(1)'],
+    ['mysql', "select load_file('/etc/passwd')"],
   ];
-  for (const [db, sql, why] of gaps) {
-    test(`${db}: ${sql}`, { todo: why }, () => blocks(sql, db));
-  }
-});
-
-describe('applyRowLimit', () => {
-  test('adiciona LIMIT quando não há', () => {
-    assert.equal(applyRowLimit('select * from t', 'postgres', 10), 'select * from t LIMIT 10');
-  });
-  test('mantém LIMIT explícito', () => {
-    assert.equal(applyRowLimit('select * from t limit 5', 'mysql', 10), 'select * from t limit 5');
-  });
-  test('remove ponto e vírgula final', () => {
-    assert.equal(applyRowLimit('select * from t;', 'postgres', 10), 'select * from t LIMIT 10');
-  });
-  test('mssql usa TOP', () => {
-    assert.equal(applyRowLimit('select * from t', 'mssql', 10), 'SELECT TOP 10 * from t');
-  });
-  test('mssql mantém TOP explícito', () => {
-    assert.equal(applyRowLimit('select top 5 * from t', 'mssql', 10), 'select top 5 * from t');
-  });
-
-  test('comentário de linha no fim não engole o LIMIT', { todo: 'LIMIT vai parar dentro do comentário' }, () => {
-    assert.match(applyRowLimit('select * from t -- fim', 'postgres', 10), /\n.*LIMIT 10|LIMIT 10[^]*--/);
-  });
-  test('LIMIT de subquery não dispensa o limite externo', { todo: 'regex vê o LIMIT interno' }, () => {
-    assert.match(applyRowLimit('select * from (select * from t limit 5) x', 'postgres', 10), /x LIMIT 10$/);
-  });
-  test('mssql: DISTINCT vem antes do TOP', { todo: 'gera "SELECT TOP 10 distinct", inválido em T-SQL' }, () => {
-    assert.match(applyRowLimit('select distinct a from t', 'mssql', 10), /^select distinct top 10/i);
-  });
+  for (const [db, sql] of cases) test(`${db}: ${sql}`, () => blocks(sql, db));
 });

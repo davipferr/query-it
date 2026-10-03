@@ -25,6 +25,15 @@ describe('assertHostIsSafe com ALLOW_PRIVATE_HOSTS=false', () => {
     'fd00::1',
     'fe80::1',
     'localhost',
+    '0.0.0.0',
+    '::',
+    '::ffff:127.0.0.1',
+    '::ffff:169.254.169.254',
+    '64:ff9b::7f00:1',
+    '2002:7f00:1::',
+    '224.0.0.1',
+    '255.255.255.255',
+    '2130706433',
   ];
   for (const host of blocked) {
     test(`bloqueia ${host}`, async () => {
@@ -32,7 +41,7 @@ describe('assertHostIsSafe com ALLOW_PRIVATE_HOSTS=false', () => {
     });
   }
 
-  for (const host of ['8.8.8.8', '2001:4860:4860::8888']) {
+  for (const host of ['8.8.8.8', '2001:4860:4860::8888', '::ffff:8.8.8.8']) {
     test(`permite ${host}`, async () => {
       await assert.doesNotReject(assertHostIsSafe(host));
     });
@@ -40,10 +49,6 @@ describe('assertHostIsSafe com ALLOW_PRIVATE_HOSTS=false', () => {
 
   test('host vazio', async () => {
     await assert.rejects(assertHostIsSafe(''), /determinar o host/);
-  });
-
-  test('IPv4 mapeado em IPv6 apontando para loopback', { todo: 'range() de ::ffff:127.0.0.1 é "ipv4Mapped"' }, async () => {
-    await assert.rejects(assertHostIsSafe('::ffff:127.0.0.1'), /não permitido/);
   });
 });
 

@@ -37,7 +37,7 @@ npm test
    - `#load-schema` shows `public.customers`, `public.order items` and `public.orders` in `#schema-tree`.
    - `#add-sql-cell`, then run `select * from customers` (Ctrl+Enter). The status reads `4 linha(s) em …ms`.
    - `#add-js-cell`, then run `return cell_1.rows.length`. Expect `4`. (SQL cells store `{ columns, rows }`, with rows as objects.)
-5. `read_console_messages` with `onlyErrors: true` must be empty. If you touched the request flow, check `read_network_requests` for `/api/query`.
+5. `read_console_messages` with `onlyErrors: true` must be empty, except a `400 (Bad Request)` for each query you **meant** to be refused; the browser logs every failed response. If you touched the request flow, check `read_network_requests` for `/api/query`.
 6. Take a screenshot of the final state as proof.
 7. Clean up: stop the preview servers, and remove `queryit.settings` from `localStorage` if you set it with JS.
 

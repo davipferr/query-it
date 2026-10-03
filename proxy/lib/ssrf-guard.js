@@ -1,9 +1,9 @@
 import dns from 'node:dns/promises';
 import ipaddr from 'ipaddr.js';
 
-// Bloqueia hosts que resolvem para faixas privadas/reservadas/link-local
-// (inclui 169.254.169.254, o endpoint clássico de metadata de nuvem usado em SSRF).
-const BLOCKED_RANGES = new Set(['private', 'loopback', 'linkLocal', 'uniqueLocal', 'reserved', 'carrierGradeNat']);
+// Só aceita endereços públicos (range "unicast" do ipaddr.js). Lista de permitidos em vez de
+// lista de bloqueados: private, loopback, link-local (169.254.169.254, metadata de nuvem),
+// 0.0.0.0, multicast, NAT64, 6to4 etc. ficam todos de fora sem precisar enumerar.
 
 export async function assertHostIsSafe(hostname) {
   // Só para dev local: com o proxy rodando na sua própria máquina (`npm start`),
@@ -27,9 +27,12 @@ export async function assertHostIsSafe(hostname) {
   }
 
   for (const address of addresses) {
-    const addr = ipaddr.parse(address);
-    const range = addr.range();
-    if (BLOCKED_RANGES.has(range)) {
+    let addr = ipaddr.parse(address);
+    // ::ffff:127.0.0.1 é o IPv4 127.0.0.1 escrito em IPv6; avalia o IPv4 de dentro.
+    if (addr.kind() === 'ipv6' && addr.isIPv4MappedAddress()) {
+      addr = addr.toIPv4Address();
+    }
+    if (addr.range() !== 'unicast') {
       throw new Error(`Conexão recusada: host resolve para um endereço não permitido (${address}).`);
     }
   }

@@ -1,4 +1,4 @@
-import { assertReadOnly, applyRowLimit } from "../lib/sql-guard.js";
+import { assertReadOnly } from "../lib/sql-guard.js";
 import { assertHostIsSafe } from "../lib/ssrf-guard.js";
 import { checkRateLimit } from "../lib/rate-limit.js";
 import * as postgres from "../lib/drivers/postgres.js";
@@ -62,14 +62,14 @@ export default async function handler(req, res) {
     assertReadOnly(sql, dbType);
 
     // Proteção SSRF: nunca conectar em IP privado/loopback/link-local/metadata.
-    const host = driver.extractHost(connectionString);
-    await assertHostIsSafe(host);
+    // O driver conecta com exatamente esta config, então o host checado é o host usado.
+    const config = driver.parseConnection(connectionString);
+    await assertHostIsSafe(config.host);
 
-    const limitedSql = applyRowLimit(sql, dbType, MAX_ROWS);
-
+    // Camada 3: o driver roda em transação read-only e limita as linhas no servidor.
     const started = Date.now();
     const { columns, rows } = await withTimeout(
-      driver.runQuery(connectionString, limitedSql),
+      driver.runQuery(config, sql, { maxRows: MAX_ROWS }),
       QUERY_TIMEOUT_MS,
     );
     const elapsedMs = Date.now() - started;
@@ -115,15 +115,14 @@ function isLocalOrigin(origin) {
 }
 
 function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(
-        () => reject(new Error("Tempo limite da consulta excedido.")),
-        ms,
-      ),
-    ),
-  ]);
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("Tempo limite da consulta excedido.")),
+      ms,
+    );
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 // Nunca deixar uma connection string vazar em uma mensagem de erro devolvida ao cliente.

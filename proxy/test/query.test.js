@@ -46,6 +46,15 @@ describe('POST /api/query: validação (sem banco)', () => {
   });
 });
 
+// Gera mais linhas que o teto do proxy (1000), em cada dialeto.
+const MANY_ROWS = {
+  postgres: 'select n from generate_series(1, 1500) as n',
+  mysql:
+    'with recursive s(n) as (select 1 union all select n + 1 from s where n < 900) ' +
+    'select a.n from s a cross join (select 1 union all select 2) b',
+  mssql: 'select a.object_id from sys.all_objects a cross join (select 1 as x union all select 2) b',
+};
+
 // Cada banco só roda se estiver de pé (npm run db:up); senão os testes aparecem como skipped.
 for (const dbType of Object.keys(DATABASES)) {
   const reachable = await isReachable(dbType);
@@ -90,10 +99,60 @@ for (const dbType of Object.keys(DATABASES)) {
       assert.equal(Number(after.body.rows[0][0]), 4);
     });
 
+    test('teto de 1000 linhas e flag truncated', async () => {
+      const { status, body } = await run(MANY_ROWS[dbType]);
+      assert.equal(status, 200, body.error);
+      assert.equal(body.rowCount, 1000);
+      assert.equal(body.truncated, true);
+    });
+
+    test('teto vale com comentário de linha no fim', async () => {
+      const { status, body } = await run(`${MANY_ROWS[dbType]} -- fim`);
+      assert.equal(status, 200, body.error);
+      assert.equal(body.rowCount, 1000);
+    });
+
+    test('teto vale com LIMIT/TOP só numa subquery', async () => {
+      const inner = {
+        postgres: 'select * from (select n from generate_series(1, 5000) as n limit 4000) x',
+        mysql: `select * from (${MANY_ROWS.mysql} limit 1500) x`,
+        mssql: 'select * from (select top 1500 a.object_id from sys.all_objects a cross join (select 1 as x union all select 2) b) t',
+      }[dbType];
+      const { status, body } = await run(inner);
+      assert.equal(status, 200, body.error);
+      assert.equal(body.rowCount, 1000);
+    });
+
+    test('limite menor do usuário é respeitado', async () => {
+      const sql = dbType === 'mssql' ? 'select top 2 * from customers' : 'select * from customers limit 2';
+      const { status, body } = await run(sql);
+      assert.equal(status, 200, body.error);
+      assert.equal(body.rowCount, 2);
+    });
+
+    test('DISTINCT continua funcionando', async () => {
+      const { status, body } = await run('select distinct country from customers');
+      assert.equal(status, 200, body.error);
+      assert.equal(body.rowCount, 3);
+    });
+
+    test('ponto e vírgula no fim é aceito', async () => {
+      const { status, body } = await run('select count(*) from customers;');
+      assert.equal(status, 200, body.error);
+    });
+
     test('erro de SQL volta como 400 com mensagem', async () => {
       const { status, body } = await run('select * from tabela_que_nao_existe');
       assert.equal(status, 400);
       assert.ok(body.error);
     });
+
+    if (dbType === 'postgres') {
+      test('transação read-only segura escrita que o guard não reconhece', async () => {
+        const { status, body } = await run("select nextval('order_seq')");
+        assert.equal(status, 400);
+        assert.match(body.error, /read-only/);
+      });
+    }
   });
 }

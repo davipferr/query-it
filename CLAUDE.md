@@ -34,8 +34,11 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 
 ## Invariants (never break these)
 
-1. **`proxy/lib/sql-guard.js` is the security barrier.** It parses the SQL into an AST and allows exactly one `SELECT`. `js/sql-guard.js` is only a fast regex pre-check for UX. Never move trust to the client, never loosen the proxy guard to make a query work, and never import the client guard from the proxy. Its known gaps (`SELECT INTO`, functions with side effects) are the `todo` tests in `proxy/test/sql-guard.test.js`.
-2. **Every proxy request goes through all its guards, in order:** CORS → rate limit → input validation → `assertReadOnly` → `assertHostIsSafe` (SSRF) → `applyRowLimit` → timeout. Don't add code paths that skip any of them.
+1. **Writes are stopped by three layers. Never weaken one because another exists:**
+   - **`proxy/lib/sql-guard.js`** parses the SQL into an AST. It allows exactly one `SELECT` and rejects `INTO` and a denylist of dangerous functions. `js/sql-guard.js` is only a fast regex pre-check for UX. Never move trust to the client, and never import the client guard from the proxy.
+   - **The driver** runs the query in a read-only transaction (SQL Server: a transaction that is always rolled back) and caps the rows on the server: Postgres uses a cursor with `FETCH`, MySQL `sql_select_limit`, SQL Server `SET ROWCOUNT`. Never rewrite the user's SQL to add `LIMIT` or `TOP`.
+   - **In production**, the database user should only have `SELECT` permission. The denylist will always miss something, such as dynamic SQL inside a function.
+2. **Every proxy request goes through all its guards, in order:** CORS → rate limit → input validation → `assertReadOnly` → `driver.parseConnection` → `assertHostIsSafe` (SSRF) → `driver.runQuery` (read-only, row cap) → timeout. The driver must connect with **exactly** the config returned by `parseConnection`. Never pass the raw connection string to a database library, because its query parameters (`?host=`, `?socketPath=`, a repeated `Server=`) would connect somewhere the SSRF guard never checked.
 3. **Errors returned to the client go through `sanitizeError`**, so a connection string never leaks.
 4. **`ALLOW_PRIVATE_HOSTS=true` is a local-only default** (set in `proxy/server.js`). Production must run with it `false`.
 5. **Database data is text, never HTML.** Table and column names, cell values and error messages go into the DOM through `textContent` or `escapeHtml`. Never interpolate them into `innerHTML`.
@@ -59,8 +62,14 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 ## Before you change X, read Y
 
 - **Anything in `proxy/`:** read `proxy/api/query.js` end to end, plus the guard you're touching.
-- **A new DB driver:** copy the shape of an existing driver and register it in `DRIVERS` in `proxy/api/query.js`, in `DIALECTS` in `proxy/lib/sql-guard.js`, in `INTROSPECTION` in `js/schema-explorer.js`, and in the `<select id="setting-db-type">` in `index.html`.
+- **A new DB driver:** it must export `parseConnection(connectionString) → { host, ... }`, building the config from known fields only, and `runQuery(config, sql, { maxRows })`, which must run read-only and cap rows on the server. Register it in `DRIVERS` in `proxy/api/query.js`, in `DIALECTS` in `proxy/lib/sql-guard.js`, in `INTROSPECTION` in `js/schema-explorer.js`, and in the `<select id="setting-db-type">` in `index.html`. Add its cases to `proxy/test/drivers.test.js`, plus a `MANY_ROWS` query and a test database in `proxy/test/helpers/databases.js`.
 - **Anything that renders results:** read invariant 5 first.
+
+## Known residual risks (not fixed yet)
+
+- **DNS rebinding:** the SSRF guard resolves the host, then the driver resolves it again. Only matters with `ALLOW_PRIVATE_HOSTS=false`, i.e. a public deploy.
+- **MySQL:** an explicit `LIMIT` larger than 1000 overrides `sql_select_limit`. The rows are trimmed afterwards, but the server still sends them all.
+- **MySQL and SQL Server drivers** have only been tested through unit tests until someone runs `npm run db:up:all`.
 
 ## Working rules
 

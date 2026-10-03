@@ -37,6 +37,9 @@ const DDL = {
     'create table customers (id int primary key, name text not null, email text, country char(2))',
     'create table orders (id int primary key, customer_id int references customers(id), total numeric(10,2), status text)',
     'create table "order items" (order_id int references orders(id), product text, qty int)',
+    // nextval() escreve sem ser INSERT/UPDATE: prova que a transação read-only segura o que o guard deixa passar.
+    'drop sequence if exists order_seq',
+    'create sequence order_seq',
   ],
   mysql: [
     'drop table if exists `order items`, orders, customers',
