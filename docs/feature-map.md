@@ -36,15 +36,14 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 
 | | |
 |---|---|
-| Files | `js/schema-explorer.js` |
+| Files | `js/schema-explorer.js`, `js/sql-preset.js` (the SELECT button's SQL) |
 | Trigger | `#load-schema` ("Carregar") |
 | Output | `#schema-tree`: one `<details>` per table, containing a `<summary>` (a `.table-name` span reading `schema.table`, plus a `.insert-select-btn` button "SELECT") and a `<ul>` of `<li>` with the column name and a `.col-type` span |
 | Request | `POST proxyUrl` with `{ dbType, connectionString, sql }`, where `sql` is the `INTROSPECTION[dbType]` query against `information_schema.columns` |
-| SELECT button | Calls `insertSqlPreset` (§3), which adds a new SQL cell with `SELECT * FROM schema.table LIMIT 100` |
+| SELECT button | `selectPreset(dbType, schema, table)` builds the SQL, then `insertSqlPreset` (§3) adds a new SQL cell with it. Names are always quoted for the dialect: Postgres `SELECT * FROM "public"."order items" LIMIT 100`, MySQL with backticks, SQL Server `SELECT TOP 100 * FROM [dbo].[order items]` (double quotes when the name contains `]`, because the proxy's parser rejects `]]`). |
 
-**Exercise:** load with the seed data. Expect `public.customers`, `public.order items`, `public.orders`. Expand one; the columns and types are listed.
+**Exercise:** load with the seed data. Expect `public.customers`, `public.order items`, `public.orders`. Expand one; the columns and types are listed. Click SELECT on `order items`, then run the new cell: `3 linha(s)`.
 **Messages:** "Configure a conexão em Configurações primeiro." (no connection or proxy URL) · "Carregando schema…" · "Nenhuma tabela encontrada." · any proxy error, shown as text in `.hint.error`.
-**Known bugs:** the SELECT button doesn't quote identifiers (`public.order items` produces invalid SQL), and it always uses `LIMIT`, which SQL Server doesn't support.
 **Invariant:** names, types and errors come from the database. Only ever add them as text.
 
 ## 3. Notebook cells (shared shell)
@@ -135,6 +134,7 @@ Every source file and the section that covers it (`npm run lint` checks this lis
 | `js/settings.js` | 1 |
 | `js/schema-explorer.js` | 2 |
 | `js/sql-guard.js` | 4 |
+| `js/sql-preset.js` | 2 |
 | `js/charts.js` | 6 |
 | `js/notebook/cell.js` | 3 |
 | `js/notebook/editor.js` | 3 |

@@ -1,4 +1,5 @@
 import { getSettings } from './settings.js';
+import { selectPreset } from './sql-preset.js';
 
 const INTROSPECTION = {
   postgres: `
@@ -53,13 +54,13 @@ async function loadSchema(container, onPickTable) {
       return;
     }
 
-    renderTree(container, data.columns, data.rows, onPickTable);
+    renderTree(container, data.columns, data.rows, onPickTable, settings.dbType);
   } catch (err) {
     showError(container, err.message);
   }
 }
 
-function renderTree(container, columns, rows, onPickTable) {
+function renderTree(container, columns, rows, onPickTable, dbType) {
   const idx = Object.fromEntries(columns.map((c, i) => [c, i]));
   const tables = new Map();
 
@@ -93,7 +94,7 @@ function renderTree(container, columns, rows, onPickTable) {
     insertBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      onPickTable(`SELECT * FROM ${schema}.${table} LIMIT 100`);
+      onPickTable(selectPreset(dbType, schema, table));
     });
 
     const ul = document.createElement('ul');

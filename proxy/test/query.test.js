@@ -2,6 +2,7 @@ import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { callHandler } from './helpers/call-handler.js';
 import { DATABASES, isReachable, seed } from './helpers/databases.js';
+import { selectPreset } from '../../js/sql-preset.js';
 
 describe('POST /api/query: validação (sem banco)', () => {
   test('OPTIONS responde 204 (preflight CORS)', async () => {
@@ -82,6 +83,13 @@ for (const dbType of Object.keys(DATABASES)) {
       const { status, body } = await run(`select count(*) as n from ${q}`);
       assert.equal(status, 200, body.error);
       assert.equal(Number(body.rows[0][0]), 3);
+    });
+
+    test('SELECT gerado pelo schema explorer roda em tabela com espaço', async () => {
+      const schema = { postgres: 'public', mysql: 'queryit', mssql: 'dbo' }[dbType];
+      const { status, body } = await run(selectPreset(dbType, schema, 'order items'));
+      assert.equal(status, 200, body.error);
+      assert.equal(body.rowCount, 3);
     });
 
     test('consulta de introspecção do schema explorer', async () => {
