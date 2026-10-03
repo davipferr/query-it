@@ -18,7 +18,23 @@
       "PowerShell(git status *)",
       "PowerShell(git diff *)",
       "PowerShell(git log *)",
-      "PowerShell(git show *)"
+      "PowerShell(git show *)",
+      "Bash(npx eslint *)",
+      "PowerShell(npx eslint *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/hooks/lint-edited.js",
+            "timeout": 60
+          }
+        ]
+      }
     ]
   }
 }

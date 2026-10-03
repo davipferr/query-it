@@ -1,7 +1,7 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { callHandler } from './helpers/call-handler.js';
-import { DATABASES, isReachable, seed } from './helpers/databases.js';
+import { DATABASES, MANY_ROWS, isReachable, seed } from './helpers/databases.js';
 import { selectPreset } from '../../js/sql-preset.js';
 
 describe('POST /api/query: validação (sem banco)', () => {
@@ -46,15 +46,6 @@ describe('POST /api/query: validação (sem banco)', () => {
     assert.doesNotMatch(JSON.stringify(body), /senha-secreta/);
   });
 });
-
-// Gera mais linhas que o teto do proxy (1000), em cada dialeto.
-const MANY_ROWS = {
-  postgres: 'select n from generate_series(1, 1500) as n',
-  mysql:
-    'with recursive s(n) as (select 1 union all select n + 1 from s where n < 900) ' +
-    'select a.n from s a cross join (select 1 union all select 2) b',
-  mssql: 'select a.object_id from sys.all_objects a cross join (select 1 as x union all select 2) b',
-};
 
 // Cada banco só roda se estiver de pé (npm run db:up); senão os testes aparecem como skipped.
 for (const dbType of Object.keys(DATABASES)) {

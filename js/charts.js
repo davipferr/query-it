@@ -1,7 +1,8 @@
+import { h, show } from "./lib/dom.js";
+
 function mountCanvas(container) {
-  container.innerHTML = "";
-  const canvas = document.createElement("canvas");
-  container.appendChild(canvas);
+  const canvas = h("canvas");
+  show(container, canvas);
   return canvas;
 }
 
@@ -39,24 +40,19 @@ export function createPieChart(container, rows, { labelKey, valueKey } = {}) {
 }
 
 export function createTable(container, rows) {
-  container.innerHTML = "";
   if (!rows.length) {
-    container.innerHTML = '<div class="empty">Sem dados.</div>';
+    show(container, h("div", { className: "empty" }, "Sem dados."));
     return;
   }
-  // Nomes de coluna e valores vêm do banco: sempre como texto, nunca HTML.
+  // Nomes de coluna e valores vêm do banco: h() sempre os trata como texto.
   const columns = Object.keys(rows[0]);
-  const table = document.createElement("table");
-  const headRow = table.createTHead().insertRow();
-  for (const c of columns) {
-    const th = document.createElement("th");
-    th.textContent = c;
-    headRow.appendChild(th);
-  }
-  const body = table.createTBody();
-  for (const r of rows) {
-    const tr = body.insertRow();
-    for (const c of columns) tr.insertCell().textContent = r[c] ?? "NULL";
-  }
-  container.appendChild(table);
+  show(
+    container,
+    h(
+      "table",
+      {},
+      h("thead", {}, h("tr", {}, columns.map((c) => h("th", {}, c)))),
+      h("tbody", {}, rows.map((r) => h("tr", {}, columns.map((c) => h("td", {}, r[c] ?? "NULL"))))),
+    ),
+  );
 }

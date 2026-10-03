@@ -12,6 +12,15 @@ export const DATABASES = {
     'Server=localhost,51433;Database=master;User Id=sa;Password=QueryIt_Test_2026;',
 };
 
+// Gera mais linhas que o teto do proxy (1000), em cada dialeto.
+export const MANY_ROWS = {
+  postgres: 'select n from generate_series(1, 1500) as n',
+  mysql:
+    'with recursive s(n) as (select 1 union all select n + 1 from s where n < 900) ' +
+    'select a.n from s a cross join (select 1 union all select 2) b',
+  mssql: 'select a.object_id from sys.all_objects a cross join (select 1 as x union all select 2) b',
+};
+
 const CUSTOMERS = [
   [1, 'Ana Souza', 'ana@example.com', 'BR'],
   [2, 'Bruno Lima', 'bruno@example.com', 'BR'],

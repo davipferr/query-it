@@ -7,7 +7,7 @@ Browser notebook for querying databases: SQL cells run through a local proxy, JS
 - **No build step.** Plain ES modules served as-is. Don't add bundlers, TypeScript or frameworks.
 - **Frontend** (`index.html`, `js/`, `css/`): served by `server.js` on port 5500. CodeMirror comes from esm.sh through the import map in `index.html`, pinned to exact versions. Pin any new package the same way.
 - **Proxy** (`proxy/`): its own package (`proxy/package.json`) on port 3000, single endpoint `POST /api/query`. Drivers: `pg`, `mysql2`, `mssql`.
-- Node 22+. The root package has no dependencies; the proxy does (`npm install --prefix proxy`).
+- Node 22+. Root `npm install` brings only dev tooling (ESLint) and turns on the git hooks; the proxy has its own dependencies (`npm install --prefix proxy`).
 
 ## Commands
 
@@ -15,7 +15,7 @@ Browser notebook for querying databases: SQL cells run through a local proxy, JS
 |---|---|
 | Run both servers | `npm run dev` |
 | Frontend only / proxy only | `npm start` / `npm start --prefix proxy` |
-| Lint (syntax check + feature-map coverage; ESLint later) | `npm run lint` |
+| Lint: ESLint + feature-map coverage + pinned CDN versions | `npm run lint` |
 | Tests (`node:test`) | `npm test` |
 | **Everything; run before saying a task is done** | `npm run check` |
 | Test databases (Docker): Postgres / all three | `npm run db:up` / `npm run db:up:all` |
@@ -32,6 +32,15 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 - Test databases: Postgres `localhost:55432`, MySQL `53306`, SQL Server `51433`. Credentials are in `docker-compose.yml` and are for local tests only. No volumes, so every `db:up` starts empty.
 - **`{ todo: '…' }` marks a known, unfixed gap.** It still runs and shows `✖ … # todo`, but doesn't fail `check`. When you fix one, remove the `todo`. Never mark a new failure as todo to get green.
 
+## Enforcement (what stops you)
+
+- **ESLint** (`eslint.config.js`) fails on: `innerHTML`/`outerHTML`/`insertAdjacentHTML`/`document.write`; `fetch` outside `js/lib/api.js`; `eval`/`new Function` outside `js/notebook/js-cell.js`; the frontend importing `proxy/` or the proxy importing `js/`; database libraries or drivers imported anywhere but `proxy/api/query.js` → `drivers/index.js`; commented-out code; `TODO`/`FIXME`/`XXX`/`HACK` markers.
+- **`scripts/check-feature-map.js`**: every `index.html` id and source file must be in `docs/feature-map.md`.
+- **`scripts/check-pins.js`**: every CDN URL needs an exact version, and every bare import in `js/` must be in the import map.
+- **`proxy/test/drivers.test.js`**: every driver in the registry must be registered everywhere else.
+- **When it runs:** a Claude Code hook lints each file right after you edit it (`scripts/hooks/lint-edited.js`), and the git pre-commit hook runs `npm run check` (`.githooks/`).
+- **When a rule blocks you, follow the message; don't work around it.** Never add `eslint-disable`, `--no-verify` or a new exception in `eslint.config.js` without the user agreeing.
+
 ## Invariants (never break these)
 
 1. **Writes are stopped by three layers. Never weaken one because another exists:**
@@ -41,7 +50,7 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 2. **Every proxy request goes through all its guards, in order:** CORS → rate limit → input validation → `assertReadOnly` → `driver.parseConnection` → `assertHostIsSafe` (SSRF) → `driver.runQuery` (read-only, row cap) → timeout. The driver must connect with **exactly** the config returned by `parseConnection`. Never pass the raw connection string to a database library, because its query parameters (`?host=`, `?socketPath=`, a repeated `Server=`) would connect somewhere the SSRF guard never checked.
 3. **Errors returned to the client go through `sanitizeError`**, so a connection string never leaks.
 4. **`ALLOW_PRIVATE_HOSTS=true` is a local-only default** (set in `proxy/server.js`). Production must run with it `false`.
-5. **Database data is text, never HTML.** Table and column names, cell values and error messages go into the DOM through `textContent` or `escapeHtml`. Never interpolate them into `innerHTML`.
+5. **Database data is text, never HTML.** Build DOM only with `h()`/`show()`/`showMessage()` from `js/lib/dom.js`; they always insert text nodes.
 6. **`new Function` in `js/notebook/js-cell.js` is intentional** (it runs user-written JS cells). Don't use it, or `eval`, anywhere else.
 7. **`server.js` must never serve files from `proxy/`** or from outside the project root.
 
@@ -52,6 +61,9 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 | Feature | Files |
 |---|---|
 | App wiring | `js/app.js` |
+| DOM building (only way) | `js/lib/dom.js` |
+| Proxy requests (only `fetch`) | `js/lib/api.js` |
+| SQL the app generates (introspection, SELECT button) | `js/sql-preset.js` |
 | Settings modal (`localStorage` key `queryit.settings`) | `js/settings.js` |
 | Schema explorer | `js/schema-explorer.js` |
 | Cells (shell, editor, SQL, JS) | `js/notebook/cell.js`, `editor.js`, `sql-cell.js`, `js-cell.js` |
@@ -59,12 +71,12 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 | Charts and tables for JS cells | `js/charts.js` |
 | Proxy handler | `proxy/api/query.js` |
 | Proxy guards | `proxy/lib/sql-guard.js`, `ssrf-guard.js`, `rate-limit.js` |
-| DB drivers (`extractHost`, `runQuery`) | `proxy/lib/drivers/*.js` |
+| DB drivers (`parseConnection`, `runQuery`), registry | `proxy/lib/drivers/*.js`, `proxy/lib/drivers/index.js` |
 
 ## Before you change X, read Y
 
 - **Anything in `proxy/`:** read `proxy/api/query.js` end to end, plus the guard you're touching.
-- **A new DB driver:** it must export `parseConnection(connectionString) → { host, ... }`, building the config from known fields only, and `runQuery(config, sql, { maxRows })`, which must run read-only and cap rows on the server. Register it in `DRIVERS` in `proxy/api/query.js`, in `DIALECTS` in `proxy/lib/sql-guard.js`, in `INTROSPECTION` in `js/schema-explorer.js`, and in the `<select id="setting-db-type">` in `index.html`. Add its cases to `proxy/test/drivers.test.js`, plus a `MANY_ROWS` query and a test database in `proxy/test/helpers/databases.js`.
+- **A new DB driver:** it must export `parseConnection(connectionString) → { host, ... }`, building the config from known fields only, and `runQuery(config, sql, { maxRows })`, which must run read-only and cap rows on the server. Add it to `proxy/lib/drivers/index.js`, then run `npm test`: the registry test in `proxy/test/drivers.test.js` names every other place still missing it (`DIALECTS`, `INTROSPECTION` in `js/sql-preset.js`, the `<option>` in `index.html`, `DATABASES`/`MANY_ROWS` in the test helpers). Add `parseConnection` cases to the same test file.
 - **Anything that renders results:** read invariant 5 first.
 
 ## Known residual risks (not fixed yet)

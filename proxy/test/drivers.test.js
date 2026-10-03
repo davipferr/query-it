@@ -98,3 +98,25 @@ describe('mssql.parseConnection', () => {
     assert.throws(() => mssql.parseConnection('Database=x;'), /host/);
   });
 });
+
+// Banco novo = driver + linha em drivers/index.js. Este teste lista tudo o que ainda falta registrar.
+describe('registro de drivers', async () => {
+  const { DRIVERS } = await import('../lib/drivers/index.js');
+  const { DIALECTS } = await import('../lib/sql-guard.js');
+  const { INTROSPECTION } = await import('../../js/sql-preset.js');
+  const { DATABASES, MANY_ROWS } = await import('./helpers/databases.js');
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+
+  for (const [dbType, driver] of Object.entries(DRIVERS)) {
+    test(`${dbType} está registrado em todos os lugares`, () => {
+      assert.equal(typeof driver.parseConnection, 'function', 'driver exporta parseConnection');
+      assert.equal(typeof driver.runQuery, 'function', 'driver exporta runQuery');
+      assert.ok(DIALECTS[dbType], 'DIALECTS em proxy/lib/sql-guard.js');
+      assert.ok(INTROSPECTION[dbType], 'INTROSPECTION em js/sql-preset.js');
+      assert.ok(DATABASES[dbType], 'DATABASES em proxy/test/helpers/databases.js');
+      assert.ok(MANY_ROWS[dbType], 'MANY_ROWS em proxy/test/helpers/databases.js');
+      assert.match(html, new RegExp(`<option value="${dbType}">`), '<option> em #setting-db-type no index.html');
+    });
+  }
+});

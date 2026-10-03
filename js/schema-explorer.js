@@ -1,25 +1,7 @@
 import { getSettings } from './settings.js';
-import { selectPreset } from './sql-preset.js';
-
-const INTROSPECTION = {
-  postgres: `
-    select table_schema, table_name, column_name, data_type
-    from information_schema.columns
-    where table_schema not in ('pg_catalog', 'information_schema')
-    order by table_schema, table_name, ordinal_position
-  `,
-  mysql: `
-    select table_schema, table_name, column_name, data_type
-    from information_schema.columns
-    where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
-    order by table_schema, table_name, ordinal_position
-  `,
-  mssql: `
-    select table_schema, table_name, column_name, data_type
-    from information_schema.columns
-    order by table_schema, table_name, ordinal_position
-  `,
-};
+import { INTROSPECTION, selectPreset } from './sql-preset.js';
+import { runQuery, missingSetting } from './lib/api.js';
+import { h, show, showMessage } from './lib/dom.js';
 
 export function initSchemaExplorer({ container, onPickTable }) {
   const loadBtn = document.getElementById('load-schema');
@@ -27,36 +9,19 @@ export function initSchemaExplorer({ container, onPickTable }) {
 }
 
 async function loadSchema(container, onPickTable) {
-  const settings = getSettings();
-
-  if (!settings.connectionString || !settings.proxyUrl) {
-    container.innerHTML = '<p class="hint">Configure a conexão em Configurações primeiro.</p>';
+  if (missingSetting()) {
+    showMessage(container, 'Configure a conexão em Configurações primeiro.');
     return;
   }
 
-  const sql = INTROSPECTION[settings.dbType];
-  container.innerHTML = '<p class="hint">Carregando schema…</p>';
+  const { dbType } = getSettings();
+  showMessage(container, 'Carregando schema…');
 
   try {
-    const res = await fetch(settings.proxyUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dbType: settings.dbType,
-        connectionString: settings.connectionString,
-        sql,
-      }),
-    });
-    const data = await res.json();
-
-    if (!res.ok) {
-      showError(container, data.error || 'Falha desconhecida.');
-      return;
-    }
-
-    renderTree(container, data.columns, data.rows, onPickTable, settings.dbType);
+    const data = await runQuery(INTROSPECTION[dbType]);
+    renderTree(container, data.columns, data.rows, onPickTable, dbType);
   } catch (err) {
-    showError(container, err.message);
+    showMessage(container, err.message, 'hint error');
   }
 }
 
@@ -72,50 +37,39 @@ function renderTree(container, columns, rows, onPickTable, dbType) {
     tables.get(key).columns.push({ name: row[idx.column_name], type: row[idx.data_type] });
   }
 
-  container.innerHTML = '';
-
   if (tables.size === 0) {
-    container.innerHTML = '<p class="hint">Nenhuma tabela encontrada.</p>';
+    showMessage(container, 'Nenhuma tabela encontrada.');
     return;
   }
 
-  for (const { schema, table, columns: cols } of tables.values()) {
-    const details = document.createElement('details');
-    const summary = document.createElement('summary');
-    const name = document.createElement('span');
-    name.className = 'table-name';
-    name.textContent = `${schema}.${table}`;
-    const insertBtn = document.createElement('button');
-    insertBtn.type = 'button';
-    insertBtn.className = 'insert-select-btn';
-    insertBtn.textContent = 'SELECT';
-    summary.append(name, ' ', insertBtn);
-
-    insertBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      onPickTable(selectPreset(dbType, schema, table));
-    });
-
-    const ul = document.createElement('ul');
-    for (const c of cols) {
-      const li = document.createElement('li');
-      const type = document.createElement('span');
-      type.className = 'col-type';
-      type.textContent = c.type;
-      li.append(`${c.name} `, type);
-      ul.appendChild(li);
-    }
-
-    details.append(summary, ul);
-    container.appendChild(details);
-  }
-}
-
-// Nomes de tabela/coluna e mensagens de erro vêm do banco: sempre como texto, nunca HTML.
-function showError(container, message) {
-  const p = document.createElement('p');
-  p.className = 'hint error';
-  p.textContent = message;
-  container.replaceChildren(p);
+  // Nomes de tabela/coluna e tipos vêm do banco: h() sempre os trata como texto.
+  show(
+    container,
+    [...tables.values()].map(({ schema, table, columns: cols }) =>
+      h(
+        'details',
+        {},
+        h(
+          'summary',
+          {},
+          h('span', { className: 'table-name' }, `${schema}.${table}`),
+          ' ',
+          h(
+            'button',
+            {
+              type: 'button',
+              className: 'insert-select-btn',
+              onClick: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onPickTable(selectPreset(dbType, schema, table));
+              },
+            },
+            'SELECT',
+          ),
+        ),
+        h('ul', {}, cols.map((c) => h('li', {}, `${c.name} `, h('span', { className: 'col-type' }, c.type)))),
+      ),
+    ),
+  );
 }

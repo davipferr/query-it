@@ -1,22 +1,24 @@
 import { precheckReadOnly } from '../sql-guard.js';
-import { getSettings } from '../settings.js';
+import { runQuery, missingSetting, ProxyError } from '../lib/api.js';
+import { h, show } from '../lib/dom.js';
 import { setVar } from './kernel-state.js';
+
+const MISSING_MESSAGES = {
+  connectionString: 'Configure a connection string em Configurações.',
+  proxyUrl: 'Configure o Proxy URL em Configurações.',
+};
 
 export async function runSqlCell({ sql, outputEl, statusEl, nameInput, id }) {
   const check = precheckReadOnly(sql);
   if (!check.ok) {
     statusEl.textContent = 'Bloqueado';
-    outputEl.innerHTML = `<div class="error">${escapeHtml(check.reason)}</div>`;
+    showError(outputEl, check.reason);
     return;
   }
 
-  const settings = getSettings();
-  if (!settings.connectionString) {
-    outputEl.innerHTML = '<div class="error">Configure a connection string em Configurações.</div>';
-    return;
-  }
-  if (!settings.proxyUrl) {
-    outputEl.innerHTML = '<div class="error">Configure o Proxy URL em Configurações.</div>';
+  const missing = missingSetting();
+  if (missing) {
+    showError(outputEl, MISSING_MESSAGES[missing]);
     return;
   }
 
@@ -24,24 +26,8 @@ export async function runSqlCell({ sql, outputEl, statusEl, nameInput, id }) {
   const started = performance.now();
 
   try {
-    const res = await fetch(settings.proxyUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        dbType: settings.dbType,
-        connectionString: settings.connectionString,
-        sql,
-      }),
-    });
-
-    const data = await res.json();
+    const data = await runQuery(sql);
     const elapsed = Math.round(performance.now() - started);
-
-    if (!res.ok) {
-      statusEl.textContent = `Erro (${elapsed}ms)`;
-      outputEl.innerHTML = `<div class="error">${escapeHtml(data.error || 'Falha desconhecida.')}</div>`;
-      return;
-    }
 
     statusEl.textContent = `${data.rowCount} linha(s) em ${data.elapsedMs ?? elapsed}ms${data.truncated ? ' (truncado)' : ''}`;
     renderTable(outputEl, data.columns, data.rows);
@@ -52,9 +38,14 @@ export async function runSqlCell({ sql, outputEl, statusEl, nameInput, id }) {
       rows: data.rows.map((row) => toObjectRow(data.columns, row)),
     });
   } catch (err) {
-    statusEl.textContent = 'Erro de rede';
-    outputEl.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
+    const elapsed = Math.round(performance.now() - started);
+    statusEl.textContent = err instanceof ProxyError ? `Erro (${elapsed}ms)` : 'Erro de rede';
+    showError(outputEl, err.message);
   }
+}
+
+function showError(outputEl, message) {
+  show(outputEl, h('div', { className: 'error' }, message));
 }
 
 function sanitizeVarName(name) {
@@ -72,33 +63,22 @@ function toObjectRow(columns, row) {
 
 function renderTable(container, columns, rows) {
   if (!rows.length) {
-    container.innerHTML = '<div class="empty">Sem resultados.</div>';
+    show(container, h('div', { className: 'empty' }, 'Sem resultados.'));
     return;
   }
-  const table = document.createElement('table');
-  const thead = document.createElement('thead');
-  thead.innerHTML = `<tr>${columns.map((c) => `<th>${escapeHtml(c)}</th>`).join('')}</tr>`;
-  const tbody = document.createElement('tbody');
-  tbody.innerHTML = rows
-    .map((row) => `<tr>${row.map((v) => `<td>${escapeHtml(formatCell(v))}</td>`).join('')}</tr>`)
-    .join('');
-  table.append(thead, tbody);
-  container.innerHTML = '';
-  container.appendChild(table);
+  show(
+    container,
+    h(
+      'table',
+      {},
+      h('thead', {}, h('tr', {}, columns.map((c) => h('th', {}, c)))),
+      h('tbody', {}, rows.map((row) => h('tr', {}, row.map((v) => h('td', {}, formatCell(v)))))),
+    ),
+  );
 }
 
 function formatCell(v) {
   if (v === null || v === undefined) return 'NULL';
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
-}
-
-function escapeHtml(str) {
-  return String(str).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;',
-  }[c]));
 }

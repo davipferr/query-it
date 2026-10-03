@@ -1,3 +1,26 @@
+// SQL que o próprio app gera (schema explorer). Sem dependência de DOM, testável no Node.
+
+// Lista tabelas e colunas para a árvore do schema explorer.
+export const INTROSPECTION = {
+  postgres: `
+    select table_schema, table_name, column_name, data_type
+    from information_schema.columns
+    where table_schema not in ('pg_catalog', 'information_schema')
+    order by table_schema, table_name, ordinal_position
+  `,
+  mysql: `
+    select table_schema, table_name, column_name, data_type
+    from information_schema.columns
+    where table_schema not in ('mysql', 'information_schema', 'performance_schema', 'sys')
+    order by table_schema, table_name, ordinal_position
+  `,
+  mssql: `
+    select table_schema, table_name, column_name, data_type
+    from information_schema.columns
+    order by table_schema, table_name, ordinal_position
+  `,
+};
+
 // SQL inserido pelo botão SELECT do schema explorer.
 // Os nomes vêm do information_schema exatamente como estão no banco, então são sempre
 // citados: espaços, palavras reservadas e maiúsculas (Postgres) funcionam sem adivinhação.

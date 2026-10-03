@@ -1,11 +1,8 @@
 import { assertReadOnly } from "../lib/sql-guard.js";
 import { assertHostIsSafe } from "../lib/ssrf-guard.js";
 import { checkRateLimit } from "../lib/rate-limit.js";
-import * as postgres from "../lib/drivers/postgres.js";
-import * as mysqlDriver from "../lib/drivers/mysql.js";
-import * as mssqlDriver from "../lib/drivers/mssql.js";
+import { DRIVERS } from "../lib/drivers/index.js";
 
-const DRIVERS = { postgres, mysql: mysqlDriver, mssql: mssqlDriver };
 const MAX_ROWS = 1000;
 const QUERY_TIMEOUT_MS = 12000;
 
@@ -43,7 +40,7 @@ export default async function handler(req, res) {
   if (!dbType || !DRIVERS[dbType]) {
     res
       .status(400)
-      .json({ error: 'dbType inválido. Use "postgres", "mysql" ou "mssql".' });
+      .json({ error: `dbType inválido. Use um destes: ${Object.keys(DRIVERS).map((k) => `"${k}"`).join(", ")}.` });
     return;
   }
   if (!connectionString || typeof connectionString !== "string") {

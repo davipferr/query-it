@@ -6,15 +6,21 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node scripts/dev.js",
-    "lint": "node scripts/check-syntax.js && node scripts/check-feature-map.js",
+    "lint": "eslint . && node scripts/check-feature-map.js && node scripts/check-pins.js",
     "test": "node --test \"test/**/*.test.js\" \"proxy/test/**/*.test.js\"",
     "check": "npm run lint && npm test",
     "db:up": "docker compose up -d --wait",
     "db:up:all": "docker compose --profile all up -d --wait",
     "db:seed": "node proxy/scripts/seed.js",
-    "db:down": "docker compose --profile all down"
+    "db:down": "docker compose --profile all down",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {
     "node": ">=22"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.12.0",
+    "globals": "17.13.0"
   }
 }

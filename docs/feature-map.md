@@ -36,7 +36,7 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 
 | | |
 |---|---|
-| Files | `js/schema-explorer.js`, `js/sql-preset.js` (the SELECT button's SQL) |
+| Files | `js/schema-explorer.js`, `js/sql-preset.js` (`INTROSPECTION` query and the SELECT button's SQL), `js/lib/api.js` (request) |
 | Trigger | `#load-schema` ("Carregar") |
 | Output | `#schema-tree`: one `<details>` per table, containing a `<summary>` (a `.table-name` span reading `schema.table`, plus a `.insert-select-btn` button "SELECT") and a `<ul>` of `<li>` with the column name and a `.col-type` span |
 | Request | `POST proxyUrl` with `{ dbType, connectionString, sql }`, where `sql` is the `INTROSPECTION[dbType]` query against `information_schema.columns` |
@@ -64,7 +64,7 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 
 | | |
 |---|---|
-| Files | `js/notebook/sql-cell.js`, `js/sql-guard.js` (client pre-check) |
+| Files | `js/notebook/sql-cell.js`, `js/sql-guard.js` (client pre-check), `js/lib/api.js` (request) |
 | Flow | client pre-check, then settings check, then `POST proxyUrl`, then render the table, then `setVar(name, { columns, rows })` |
 | Variable name | `.cell-name` input (default: the cell id). Sanitized to a JS identifier (invalid characters become `_`, a leading digit gets a `_` prefix). |
 | Output | `.cell-output table` with `thead th` / `tbody td`; `null` is shown as `NULL`, objects as JSON |
@@ -93,18 +93,18 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 
 | | |
 |---|---|
-| Files | `js/charts.js`; Chart.js from `cdn.jsdelivr.net/npm/chart.js@4` (major version only, **not pinned**) |
+| Files | `js/charts.js`; Chart.js 4.5.1 from jsdelivr (`<script>` in `index.html`, pinned; `npm run lint` rejects unpinned CDN URLs) |
 | API | `createBarChart(el, rows, { x, y, label })`, `createLineChart(...)`, `createPieChart(el, rows, { labelKey, valueKey })`, `createTable(el, rows)` |
 
 **Exercise:** `charts.createBarChart(el, cell_1.rows, { x: 'name', y: 'id' })` draws a `<canvas>` in the cell output.
 **Messages:** "Sem dados." (`createTable` with no rows).
-**Invariant:** `createTable` gets column names and values from the database, so it builds cells with `textContent`.
+**Invariant:** `createTable` gets column names and values from the database, so it builds cells with `h()` (text only).
 
 ## 7. Proxy: `POST /api/query`
 
 | | |
 |---|---|
-| Files | `proxy/server.js` (HTTP and the JSON body), `proxy/api/query.js` (handler), `proxy/lib/*` (guards), `proxy/lib/drivers/*` |
+| Files | `proxy/server.js` (HTTP and the JSON body), `proxy/api/query.js` (handler), `proxy/lib/*` (guards), `proxy/lib/drivers/*` (`index.js` is the registry; only the handler imports it) |
 | Request | `{ dbType: 'postgres' \| 'mysql' \| 'mssql', connectionString, sql }` |
 | 200 | `{ columns: string[], rows: any[][], rowCount, elapsedMs, truncated }` (`truncated` when `rowCount >= 1000`) |
 | Errors | `{ error }` with 400 (validation, guard, SSRF, database error), 405 (not POST), 429 (rate limit: 30 per minute per IP), 404 (other paths) |
@@ -112,6 +112,13 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 
 **Exercise without the UI:** `callHandler()` in `proxy/test/helpers/call-handler.js`, or `curl -X POST localhost:3000/api/query -H 'Content-Type: application/json' -d '{...}'`.
 **Messages:** `dbType inválido…` · `connectionString é obrigatório.` · `sql é obrigatório.` · `SQL inválido: …` · `Apenas um comando por execução é permitido.` · `Somente consultas SELECT são permitidas (recebido: X).` · `SELECT ... INTO não é permitido.` · `Função não permitida: X.` · `Conexão recusada: host resolve para um endereço não permitido (…)` · `Muitas requisições…` · `Tempo limite da consulta excedido.` · `JSON inválido.` (from `server.js`) · Postgres `cannot execute X in a read-only transaction`.
+
+## Shared helpers (`js/lib/`)
+
+| | |
+|---|---|
+| `js/lib/dom.js` | `h(tag, props, ...children)` builds elements (text children are always text nodes); `show(el, ...children)` replaces content (empty call = clear); `showMessage(el, text, className = 'hint')`. **The only way to build DOM**: `innerHTML`/`outerHTML`/`insertAdjacentHTML` fail ESLint. |
+| `js/lib/api.js` | `runQuery(sql)` posts to the proxy with the saved settings and resolves with the §7 200 body; throws `ProxyError` (has `status`) for proxy errors, the fetch error for network failures. `missingSetting()` returns `'connectionString'`, `'proxyUrl'` or `null`. **The only module allowed to call `fetch`.** |
 
 ## 8. Static server
 
@@ -149,3 +156,6 @@ Every source file and the section that covers it (`npm run lint` checks this lis
 | `proxy/lib/drivers/postgres.js` | 7 |
 | `proxy/lib/drivers/mysql.js` | 7 |
 | `proxy/lib/drivers/mssql.js` | 7 |
+| `proxy/lib/drivers/index.js` | 7 |
+| `js/lib/dom.js` | Shared helpers |
+| `js/lib/api.js` | Shared helpers |

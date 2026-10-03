@@ -1,0 +1,4 @@
+#!/bin/sh
+# Mesmo gate que o CI vai rodar no futuro: lint + testes. Pular só em emergência (git commit --no-verify).
+echo "pre-commit: npm run check"
+npm run check --silent

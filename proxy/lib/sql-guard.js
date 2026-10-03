@@ -5,7 +5,7 @@ const { Parser } = pkg;
 
 // Camada 2 de defesa (a que realmente decide): parser de AST, não regex.
 // Regex é bypassável com comentários/case/statements empilhados; AST não.
-const DIALECTS = {
+export const DIALECTS = {
   postgres: 'postgresql',
   mysql: 'mysql',
   mssql: 'transactsql',
@@ -23,7 +23,7 @@ export function assertReadOnly(sql, dbType) {
   try {
     ast = parser.astify(sql, { database: dialect });
   } catch (err) {
-    throw new Error(`SQL inválido: ${err.message}`);
+    throw new Error(`SQL inválido: ${err.message}`, { cause: err });
   }
 
   const statements = Array.isArray(ast) ? ast : [ast];
