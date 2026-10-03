@@ -2,6 +2,7 @@ import { getSettings } from './settings.js';
 import { INTROSPECTION, selectPreset } from './sql-preset.js';
 import { runQuery, missingSetting } from './lib/api.js';
 import { h, show, showMessage } from './lib/dom.js';
+import { setSchemaTables } from './notebook/sql-schema.js';
 
 export function initSchemaExplorer({ container, onPickTable }) {
   const loadBtn = document.getElementById('load-schema');
@@ -36,6 +37,8 @@ function renderTree(container, columns, rows, onPickTable, dbType) {
     if (!tables.has(key)) tables.set(key, { schema, table, columns: [] });
     tables.get(key).columns.push({ name: row[idx.column_name], type: row[idx.data_type] });
   }
+
+  setSchemaTables([...tables.values()]);
 
   if (tables.size === 0) {
     showMessage(container, 'Nenhuma tabela encontrada.');

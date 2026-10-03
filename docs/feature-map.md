@@ -41,6 +41,7 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | Output | `#schema-tree`: one `<details>` per table, containing a `<summary>` (a `.table-name` span reading `schema.table`, plus a `.insert-select-btn` button "SELECT") and a `<ul>` of `<li>` with the column name and a `.col-type` span |
 | Request | `POST proxyUrl` with `{ dbType, connectionString, sql }`, where `sql` is the `INTROSPECTION[dbType]` query against `information_schema.columns` |
 | SELECT button | `selectPreset(dbType, schema, table)` builds the SQL, then `insertSqlPreset` (§3) adds a new SQL cell with it. Names are always quoted for the dialect: Postgres `SELECT * FROM "public"."order items" LIMIT 100`, MySQL with backticks, SQL Server `SELECT TOP 100 * FROM [dbo].[order items]` (double quotes when the name contains `]`, because the proxy's parser rejects `]]`). |
+| Autocomplete | After a load, the tables go to `setSchemaTables()` in `js/notebook/sql-schema.js`; every SQL editor (open or new) reloads its language with that schema (§3). |
 
 **Exercise:** load with the seed data. Expect `public.customers`, `public.order items`, `public.orders`. Expand one; the columns and types are listed. Click SELECT on `order items`, then run the new cell: `3 linha(s)`.
 **Messages:** "Configure a conexão em Configurações primeiro." (no connection or proxy URL) · "Carregando schema…" · "Nenhuma tabela encontrada." · any proxy error, shown as text in `.hint.error`.
@@ -56,7 +57,8 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | Run | `.run-btn`, or Ctrl/Cmd+Enter in the editor (`Mod-Enter`, highest precedence) |
 | Ids | `cell_1`, `cell_2`… from a module counter. The counter never resets, so ids keep counting up after a removal. |
 | Language select | Changes **only syntax highlighting** (`LANGUAGES` in `editor.js`, loaded lazily from esm.sh). Execution always follows the cell type. |
-| Remove | `.remove-btn` destroys the editor and the element. The cell's variable stays in kernel state. |
+| Remove | `.remove-btn` destroys the editor (and its schema subscription) and the element. The cell's variable stays in kernel state. |
+| SQL autocomplete | Only after the sidebar schema is loaded (§2). lang-sql completes schemas, tables of the default schema (`public` / `dbo` / the only schema) and `table.`/`alias.` columns; `unqualifiedColumns` in `editor.js` adds bare column names of the tables mentioned in the cell text (detail `table · type`). Names that need it are quoted for the dialect (`"order items"`). Popup: `.cm-tooltip-autocomplete li` (`.cm-completionLabel`). Ctrl+Space opens it explicitly. |
 
 **Driving the editor:** click `.cell-source .cm-content`, then type, or call `cell.editor.setValue()` from code. The editor's text is `view.state.doc`; `textContent` of `.cell-source` includes line numbers.
 
@@ -148,6 +150,7 @@ Every source file and the section that covers it (`npm run lint` checks this lis
 | `js/charts.js` | 6 |
 | `js/notebook/cell.js` | 3 |
 | `js/notebook/editor.js` | 3 |
+| `js/notebook/sql-schema.js` | 2–3 |
 | `js/notebook/sql-cell.js` | 4 |
 | `js/notebook/js-cell.js` | 5 |
 | `js/notebook/kernel-state.js` | 5 |

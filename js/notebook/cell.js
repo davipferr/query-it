@@ -61,7 +61,7 @@ export function createCell(type) {
   });
 
   removeBtn.addEventListener('click', () => {
-    editor.view.destroy();
+    editor.destroy();
     el.remove();
   });
 

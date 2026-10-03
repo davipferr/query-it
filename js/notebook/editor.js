@@ -5,6 +5,38 @@ import { EditorState, Compartment, Prec } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { getSettings } from '../settings.js';
+import {
+  getSchemaTables,
+  onSchemaChange,
+  buildNamespace,
+  pickDefaultSchema,
+  columnsInQuery,
+  quoteIfNeeded,
+} from './sql-schema.js';
+
+// Completa colunas sem prefixo ("SELECT na|") a partir das tabelas citadas na consulta.
+// Depois de "." ou dentro de aspas, quem completa é o próprio lang-sql.
+function unqualifiedColumns(dbType) {
+  return (context) => {
+    const word = context.matchBefore(/[\w$]*/);
+    const charBefore = context.state.sliceDoc(word.from - 1, word.from);
+    if (/[."`[]/.test(charBefore)) return null;
+    if (word.from === word.to && !context.explicit) return null;
+    const columns = columnsInQuery(getSchemaTables(), context.state.doc.toString());
+    if (!columns.length) return null;
+    return {
+      from: word.from,
+      options: columns.map((c) => ({
+        label: c.name,
+        apply: quoteIfNeeded(dbType, c.name),
+        type: 'property',
+        detail: `${c.table} · ${c.type}`,
+        boost: 1,
+      })),
+      validFor: /^[\w$]*$/,
+    };
+  };
+}
 
 // Cada linguagem só é baixada quando alguém a seleciona.
 export const LANGUAGES = {
@@ -13,7 +45,13 @@ export const LANGUAGES = {
     load: async () => {
       const m = await import('@codemirror/lang-sql');
       const dialects = { postgres: m.PostgreSQL, mysql: m.MySQL, mssql: m.MSSQL };
-      return m.sql({ dialect: dialects[getSettings().dbType] || m.StandardSQL });
+      const { dbType } = getSettings();
+      const dialect = dialects[dbType] || m.StandardSQL;
+      const tables = getSchemaTables();
+      return [
+        m.sql({ dialect, schema: buildNamespace(tables), defaultSchema: pickDefaultSchema(tables, dbType) }),
+        dialect.language.data.of({ autocomplete: unqualifiedColumns(dbType) }),
+      ];
     },
   },
   js: {
@@ -86,8 +124,17 @@ export function createEditor({ parent, language, placeholderText = '', onRun }) 
 
   setLanguage(language);
 
+  // Editores já abertos passam a sugerir o schema assim que o explorer o carrega.
+  const unsubscribe = onSchemaChange(() => {
+    if (current === 'sql') setLanguage('sql');
+  });
+
   return {
     view,
+    destroy: () => {
+      unsubscribe();
+      view.destroy();
+    },
     setLanguage,
     getLanguage: () => current,
     getValue: () => view.state.doc.toString(),
