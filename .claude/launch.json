@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start"],
+      "port": 5500
+    },
+    {
+      "name": "proxy",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["start", "--prefix", "proxy"],
+      "port": 3000
+    }
+  ]
+}

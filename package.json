@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node scripts/dev.js",
+    "lint": "node scripts/check-syntax.js",
+    "test": "node --test",
+    "check": "npm run lint && npm test"
   },
   "engines": {
     "node": ">=18"
