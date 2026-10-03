@@ -49,13 +49,13 @@ async function loadSchema(container, onPickTable) {
     const data = await res.json();
 
     if (!res.ok) {
-      container.innerHTML = `<p class="hint error">${data.error}</p>`;
+      showError(container, data.error || 'Falha desconhecida.');
       return;
     }
 
     renderTree(container, data.columns, data.rows, onPickTable);
   } catch (err) {
-    container.innerHTML = `<p class="hint error">${err.message}</p>`;
+    showError(container, err.message);
   }
 }
 
@@ -81,19 +81,40 @@ function renderTree(container, columns, rows, onPickTable) {
   for (const { schema, table, columns: cols } of tables.values()) {
     const details = document.createElement('details');
     const summary = document.createElement('summary');
-    summary.innerHTML = `<span class="table-name">${schema}.${table}</span>
-      <button type="button" class="insert-select-btn">SELECT</button>`;
+    const name = document.createElement('span');
+    name.className = 'table-name';
+    name.textContent = `${schema}.${table}`;
+    const insertBtn = document.createElement('button');
+    insertBtn.type = 'button';
+    insertBtn.className = 'insert-select-btn';
+    insertBtn.textContent = 'SELECT';
+    summary.append(name, ' ', insertBtn);
 
-    summary.querySelector('.insert-select-btn').addEventListener('click', (e) => {
+    insertBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       onPickTable(`SELECT * FROM ${schema}.${table} LIMIT 100`);
     });
 
     const ul = document.createElement('ul');
-    ul.innerHTML = cols.map((c) => `<li>${c.name} <span class="col-type">${c.type}</span></li>`).join('');
+    for (const c of cols) {
+      const li = document.createElement('li');
+      const type = document.createElement('span');
+      type.className = 'col-type';
+      type.textContent = c.type;
+      li.append(`${c.name} `, type);
+      ul.appendChild(li);
+    }
 
     details.append(summary, ul);
     container.appendChild(details);
   }
+}
+
+// Nomes de tabela/coluna e mensagens de erro vêm do banco: sempre como texto, nunca HTML.
+function showError(container, message) {
+  const p = document.createElement('p');
+  p.className = 'hint error';
+  p.textContent = message;
+  container.replaceChildren(p);
 }
