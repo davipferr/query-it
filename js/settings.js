@@ -3,7 +3,10 @@ const STORAGE_KEY = 'queryit.settings';
 const DEFAULTS = {
   dbType: 'postgres',
   connectionString: '',
-  proxyUrl: 'https://queryit-proxy.vercel.app/api/query',
+  // Servido pelo proxy/server.js local -> usa o proxy da mesma origem.
+  proxyUrl: ['localhost', '127.0.0.1'].includes(location.hostname)
+    ? `${location.origin}/api/query`
+    : '',
 };
 
 export function getSettings() {

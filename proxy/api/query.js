@@ -9,7 +9,7 @@ const DRIVERS = { postgres, mysql: mysqlDriver, mssql: mssqlDriver };
 const MAX_ROWS = 1000;
 const QUERY_TIMEOUT_MS = 12000;
 
-// Configure no Vercel: ALLOWED_ORIGINS="https://seu-usuario.github.io"
+// Em produção: ALLOWED_ORIGINS="https://seu-usuario.github.io"
 // Deixe vazio em dev para liberar qualquer origem.
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
   .split(",")

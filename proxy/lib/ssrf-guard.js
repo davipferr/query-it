@@ -6,9 +6,9 @@ import ipaddr from 'ipaddr.js';
 const BLOCKED_RANGES = new Set(['private', 'loopback', 'linkLocal', 'uniqueLocal', 'reserved', 'carrierGradeNat']);
 
 export async function assertHostIsSafe(hostname) {
-  // Só para dev local: com o proxy rodando na sua própria máquina (`vercel dev`),
+  // Só para dev local: com o proxy rodando na sua própria máquina (`npm start`),
   // bloquear localhost/loopback impediria justamente o caso de uso (banco local).
-  // Em produção (deploy real na Vercel) essa env var não deve existir.
+  // Em produção (servidor público) defina ALLOW_PRIVATE_HOSTS=false.
   if (process.env.ALLOW_PRIVATE_HOSTS === 'true') return;
 
   if (!hostname) {
