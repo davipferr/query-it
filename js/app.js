@@ -7,13 +7,13 @@ const cellsContainer = document.getElementById('cells');
 document.getElementById('add-sql-cell').addEventListener('click', () => {
   const cell = createCell('sql');
   cellsContainer.appendChild(cell.el);
-  cell.sourceEl.focus();
+  cell.editor.focus();
 });
 
 document.getElementById('add-js-cell').addEventListener('click', () => {
   const cell = createCell('js');
   cellsContainer.appendChild(cell.el);
-  cell.sourceEl.focus();
+  cell.editor.focus();
 });
 
 const settingsUI = initSettingsUI();
