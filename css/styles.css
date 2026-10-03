@@ -182,8 +182,17 @@ button:hover {
   white-space: nowrap;
 }
 
-.remove-btn {
+.remove-btn,
+.move-up-btn,
+.move-down-btn {
   padding: 0.2rem 0.5rem;
+}
+
+/* Nas pontas não há para onde mover; o clique já seria ignorado, então só sinaliza. */
+.cell:first-child .move-up-btn,
+.cell:last-child .move-down-btn {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 .cell-source {

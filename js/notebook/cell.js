@@ -12,6 +12,8 @@ export function createCell(type) {
   const outputEl = h('div', { className: 'cell-output' });
   const statusEl = h('span', { className: 'cell-status' });
   const runBtn = h('button', { type: 'button', className: 'run-btn' }, '▶ Run');
+  const moveUpBtn = h('button', { type: 'button', className: 'move-up-btn', title: 'Mover célula para cima' }, '▲');
+  const moveDownBtn = h('button', { type: 'button', className: 'move-down-btn', title: 'Mover célula para baixo' }, '▼');
   const removeBtn = h('button', { type: 'button', className: 'remove-btn', title: 'Remover célula' }, '✕');
   const nameInput =
     type === 'sql' ? h('input', { className: 'cell-name', placeholder: 'nome da variável (opcional)', value: id }) : null;
@@ -33,6 +35,8 @@ export function createCell(type) {
       languageSelect,
       runBtn,
       statusEl,
+      moveUpBtn,
+      moveDownBtn,
       removeBtn,
     ),
     sourceEl,
@@ -58,6 +62,17 @@ export function createCell(type) {
     } else {
       runJsCell({ code: editor.getValue(), outputEl, statusEl });
     }
+  });
+
+  // Mover só reordena o DOM: as variáveis do kernel seguem a ordem de execução, não a posição.
+  moveUpBtn.addEventListener('click', () => {
+    const prev = el.previousElementSibling;
+    if (prev) prev.before(el);
+  });
+
+  moveDownBtn.addEventListener('click', () => {
+    const next = el.nextElementSibling;
+    if (next) next.after(el);
   });
 
   removeBtn.addEventListener('click', () => {

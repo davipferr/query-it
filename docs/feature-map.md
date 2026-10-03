@@ -53,10 +53,11 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 |---|---|
 | Files | `js/notebook/cell.js` (shell), `js/notebook/editor.js` (CodeMirror), `js/app.js` (buttons) |
 | Add | `#add-sql-cell`, `#add-js-cell`. Cells are appended to `#cells`. |
-| Cell DOM | `.cell` > `.cell-header` (`.cell-type`, `.cell-name` SQL only, `.cell-language` select, `.run-btn` "▶ Run", `.cell-status`, `.remove-btn` "✕") + `.cell-source` (editor) + `.cell-output` |
+| Cell DOM | `.cell` > `.cell-header` (`.cell-type`, `.cell-name` SQL only, `.cell-language` select, `.run-btn` "▶ Run", `.cell-status`, `.move-up-btn` "▲", `.move-down-btn` "▼", `.remove-btn` "✕") + `.cell-source` (editor) + `.cell-output` |
 | Run | `.run-btn`, or Ctrl/Cmd+Enter in the editor (`Mod-Enter`, highest precedence) |
 | Ids | `cell_1`, `cell_2`… from a module counter. The counter never resets, so ids keep counting up after a removal. |
 | Language select | Changes **only syntax highlighting** (`LANGUAGES` in `editor.js`, loaded lazily from esm.sh). Execution always follows the cell type. |
+| Move | `.move-up-btn` / `.move-down-btn` swap the cell with its sibling in `#cells`; the editor, output and status move with it. The first cell's ▲ and the last cell's ▼ are dimmed and not clickable (CSS `:first-child` / `:last-child`). Moving doesn't rerun anything or change kernel state: variables still reflect the order cells were **run**, not their position. |
 | Remove | `.remove-btn` destroys the editor (and its schema subscription) and the element. The cell's variable stays in kernel state. |
 | SQL autocomplete | Only after the sidebar schema is loaded (§2). lang-sql completes schemas, tables of the default schema (`public` / `dbo` / the only schema) and `table.`/`alias.` columns; `unqualifiedColumns` in `editor.js` adds bare column names of the tables mentioned in the cell text (detail `table · type`). Names that need it are quoted for the dialect (`"order items"`). Popup: `.cm-tooltip-autocomplete li` (`.cm-completionLabel`). Ctrl+Space opens it explicitly. |
 
