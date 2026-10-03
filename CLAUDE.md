@@ -81,9 +81,25 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 
 ## Known residual risks (not fixed yet)
 
+- **Any website can use a running local proxy.** With `ALLOWED_ORIGINS` empty (the default), CORS reflects every origin, so a page on any site can `POST /api/query` and read the results. It only has to guess local credentials, such as `postgres:postgres@localhost`. Verified 2026-10-03 with `Origin: https://evil.example`, which got 200 and the rows.
+- **The local proxy listens on all interfaces** (`0.0.0.0:3000`) with `ALLOW_PRIVATE_HOSTS=true`, so other machines on the network can use it to reach your private network.
+
 - **DNS rebinding:** the SSRF guard resolves the host, then the driver resolves it again. Only matters with `ALLOW_PRIVATE_HOSTS=false`, i.e. a public deploy.
 - **MySQL:** an explicit `LIMIT` larger than 1000 overrides `sql_select_limit`. The rows are trimmed afterwards, but the server still sends them all.
 - **MySQL and SQL Server drivers** have only been tested through unit tests until someone runs `npm run db:up:all`.
+
+## Skills and agents (`.claude/`)
+
+| When | Use |
+|---|---|
+| Before reporting any change as done | `verify` skill |
+| A bug report, an error, "X doesn't work" | `repro-bug` skill |
+| "Why does X happen?", an unclear failure, before naming a cause | `investigate` skill |
+| Any change under `proxy/` or to `js/sql-preset.js` | `proxy-change` skill (required) |
+| Supporting a new database type | `add-db-driver` skill |
+| Before committing a non-trivial change | `reviewer` subagent (read-only, a different model) |
+
+When an agent gets something wrong or a human has to step in, add a row to `docs/agent-log.md` and turn it into a rule, test or skill line.
 
 ## Working rules
 
@@ -91,4 +107,6 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 - **Bug reports go through the `repro-bug` skill:** reproduce it, prove it fails, then fix it.
 - **Verify before you report.** Run `npm run check`. For any UI change, also open the app in the browser and exercise the feature. Say what you saw, not what you expect.
 - **Code comments are in Portuguese** and explain *why*. Don't write history in comments ("changed X because…"); that belongs in the commit message. Don't leave commented-out code.
+- **Edit code with the Edit/Write tools**, not Python or shell heredocs: string escaping has mangled regexes here before (see `docs/agent-log.md`).
+- **Run any new or changed skill once** against the real app before committing it.
 - Match the surrounding style. Quotes vary per file (single vs double); follow the file you're in.
