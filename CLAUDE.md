@@ -7,7 +7,7 @@ Browser notebook for querying databases: SQL cells run through a local proxy, JS
 - **No build step.** Plain ES modules served as-is. Don't add bundlers, TypeScript or frameworks.
 - **Frontend** (`index.html`, `js/`, `css/`): served by `server.js` on port 5500. CodeMirror comes from esm.sh through the import map in `index.html`, pinned to exact versions. Pin any new package the same way.
 - **Proxy** (`proxy/`): its own package (`proxy/package.json`) on port 3000, single endpoint `POST /api/query`. Drivers: `pg`, `mysql2`, `mssql`.
-- Node 18+. The root package has no dependencies; the proxy does (`npm install --prefix proxy`).
+- Node 22+. The root package has no dependencies; the proxy does (`npm install --prefix proxy`).
 
 ## Commands
 
@@ -16,14 +16,25 @@ Browser notebook for querying databases: SQL cells run through a local proxy, JS
 | Run both servers | `npm run dev` |
 | Frontend only / proxy only | `npm start` / `npm start --prefix proxy` |
 | Lint (syntax check for now; ESLint later) | `npm run lint` |
-| Tests (`node:test`, `*.test.js`) | `npm test` |
+| Tests (`node:test`) | `npm test` |
 | **Everything; run before saying a task is done** | `npm run check` |
+| Test databases (Docker): Postgres / all three | `npm run db:up` / `npm run db:up:all` |
+| Load fixture data into running databases | `npm run db:seed` |
+| Stop the test databases | `npm run db:down` |
 
-Agents can also start the servers through `.claude/launch.json` (`frontend`, `proxy`) and use the browser pane.
+Agents can also start the servers through `.claude/launch.json` (`frontend`, `proxy`) and use the browser pane. **Use the `verify` skill before reporting any change as done.**
+
+## Tests
+
+- `proxy/test/*.test.js`: guards, rate limit, and the `/api/query` handler. The per-database suites in `query.test.js` skip themselves when that database is down. A `﹣` (skipped) result is **not** a pass.
+- `test/js/*.test.js`: pure frontend modules.
+- Helpers (`proxy/test/helpers/`): `callHandler` runs the handler without HTTP; `databases.js` holds the test connection strings and the seed data.
+- Test databases: Postgres `localhost:55432`, MySQL `53306`, SQL Server `51433`. Credentials are in `docker-compose.yml` and are for local tests only. No volumes, so every `db:up` starts empty.
+- **`{ todo: '…' }` marks a known, unfixed gap.** It still runs and shows `✖ … # todo`, but doesn't fail `check`. When you fix one, remove the `todo`. Never mark a new failure as todo to get green.
 
 ## Invariants (never break these)
 
-1. **`proxy/lib/sql-guard.js` is the security barrier.** It parses the SQL into an AST and allows exactly one `SELECT`. `js/sql-guard.js` is only a fast regex pre-check for UX. Never move trust to the client, never loosen the proxy guard to make a query work, and never import the client guard from the proxy.
+1. **`proxy/lib/sql-guard.js` is the security barrier.** It parses the SQL into an AST and allows exactly one `SELECT`. `js/sql-guard.js` is only a fast regex pre-check for UX. Never move trust to the client, never loosen the proxy guard to make a query work, and never import the client guard from the proxy. Its known gaps (`SELECT INTO`, functions with side effects) are the `todo` tests in `proxy/test/sql-guard.test.js`.
 2. **Every proxy request goes through all its guards, in order:** CORS → rate limit → input validation → `assertReadOnly` → `assertHostIsSafe` (SSRF) → `applyRowLimit` → timeout. Don't add code paths that skip any of them.
 3. **Errors returned to the client go through `sanitizeError`**, so a connection string never leaks.
 4. **`ALLOW_PRIVATE_HOSTS=true` is a local-only default** (set in `proxy/server.js`). Production must run with it `false`.

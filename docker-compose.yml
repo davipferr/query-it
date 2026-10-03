@@ -1,0 +1,51 @@
+# Bancos descartáveis para testes e verificação local (sem volume: cada `up` começa do zero).
+# Postgres sobe por padrão; MySQL e SQL Server só com --profile (imagens maiores).
+# Popular com dados: npm run db:seed
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: queryit
+      POSTGRES_PASSWORD: queryit
+      POSTGRES_DB: queryit
+    ports:
+      - "55432:5432"
+    tmpfs:
+      - /var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U queryit -d queryit"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mysql:
+    image: mysql:8.4
+    profiles: ["mysql", "all"]
+    environment:
+      MYSQL_ROOT_PASSWORD: queryit
+      MYSQL_USER: queryit
+      MYSQL_PASSWORD: queryit
+      MYSQL_DATABASE: queryit
+    ports:
+      - "53306:3306"
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uqueryit -pqueryit --silent"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    profiles: ["mssql", "all"]
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "QueryIt_Test_2026"
+    ports:
+      - "51433:1433"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P QueryIt_Test_2026 -Q 'select 1' -b"]
+      interval: 3s
+      timeout: 5s
+      retries: 60

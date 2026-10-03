@@ -7,10 +7,14 @@
     "start": "node server.js",
     "dev": "node scripts/dev.js",
     "lint": "node scripts/check-syntax.js",
-    "test": "node --test",
-    "check": "npm run lint && npm test"
+    "test": "node --test \"test/**/*.test.js\" \"proxy/test/**/*.test.js\"",
+    "check": "npm run lint && npm test",
+    "db:up": "docker compose up -d --wait",
+    "db:up:all": "docker compose --profile all up -d --wait",
+    "db:seed": "node proxy/scripts/seed.js",
+    "db:down": "docker compose --profile all down"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }
