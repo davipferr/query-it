@@ -24,7 +24,23 @@ function sslFromMode(mode) {
   return true;
 }
 
-export async function runQuery(config, sql, { maxRows }) {
+// Cancela a consulta em andamento da sessão `pid`. Precisa de outra conexão porque a primeira
+// está ocupada; usa a mesma config já checada pelo ssrf-guard. É SQL do driver, não do usuário
+// (o sql-guard proíbe pg_cancel_backend em consultas digitadas).
+async function cancelBackend(config, pid) {
+  const canceler = new pg.Client({ ...config, connectionTimeoutMillis: 8000 });
+  try {
+    await canceler.connect();
+    await canceler.query('select pg_cancel_backend($1)', [pid]);
+  } catch {
+    // Melhor esforço: se falhar, o statement_timeout ainda encerra a consulta.
+  } finally {
+    await canceler.end().catch(() => {});
+  }
+}
+
+export async function runQuery(config, sql, { maxRows, signal }) {
+  signal?.throwIfAborted();
   const client = new pg.Client({
     ...config,
     connectionTimeoutMillis: 8000,
@@ -32,15 +48,21 @@ export async function runQuery(config, sql, { maxRows }) {
   });
 
   await client.connect();
+  const cancel = () => cancelBackend(config, client.processID);
+  signal?.addEventListener('abort', cancel, { once: true });
   try {
+    signal?.throwIfAborted();
     // Transação read-only: mesmo que algo passe pelo sql-guard, o Postgres recusa escrita.
     await client.query('begin read only');
+    // Um cancelamento entre comandos acha a sessão ociosa e não para nada: checa antes de cada um.
+    signal?.throwIfAborted();
     // Cursor + FETCH limita as linhas no servidor sem reescrever a consulta do usuário.
     // O modo extended faz o Postgres recusar mais de um comando na mesma string.
     await client.query({
       text: `declare queryit_cursor no scroll cursor for ${sql.trim().replace(/;\s*$/, '')}`,
       queryMode: 'extended',
     });
+    signal?.throwIfAborted();
     const result = await client.query(`fetch ${Number(maxRows)} from queryit_cursor`);
     const columns = result.fields.map((f) => f.name);
     return {
@@ -48,6 +70,7 @@ export async function runQuery(config, sql, { maxRows }) {
       rows: result.rows.map((row) => columns.map((c) => row[c])),
     };
   } finally {
+    signal?.removeEventListener('abort', cancel);
     // Fechar a conexão descarta a transação; nada é commitado.
     await client.end();
   }

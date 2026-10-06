@@ -1,5 +1,13 @@
 import { initSettingsUI, getSettings } from './settings.js';
-import { createCell, insertSqlPreset, reserveCellIds, serializeCells, CELL_CHANGE_EVENT } from './notebook/cell.js';
+import {
+  createCell,
+  insertSqlPreset,
+  reserveCellIds,
+  serializeCells,
+  CELL_CHANGE_EVENT,
+  RUN_FROM_EVENT,
+} from './notebook/cell.js';
+import { runFrom, stopBatch, isBatchRunning } from './notebook/runner.js';
 import { loadNotebook, saveNotebook, maxCellNumber, STORAGE_KEY } from './notebook/persistence.js';
 import { initSchemaExplorer } from './schema-explorer.js';
 
@@ -74,6 +82,17 @@ cellsContainer.addEventListener(CELL_CHANGE_EVENT, scheduleSave);
 window.addEventListener('pagehide', () => {
   if (saveTimer) saveNow();
 });
+
+// O mesmo botão começa e para o lote.
+const runAllBtn = document.getElementById('run-all');
+function updateRunAll() {
+  runAllBtn.textContent = isBatchRunning() ? '■ Parar' : '▶▶ Rodar tudo';
+}
+runAllBtn.addEventListener('click', () => {
+  if (isBatchRunning()) stopBatch();
+  else runFrom(cellsContainer, null, updateRunAll);
+});
+cellsContainer.addEventListener(RUN_FROM_EVENT, (e) => runFrom(cellsContainer, e.target, updateRunAll));
 
 document.getElementById('add-sql-cell').addEventListener('click', () => {
   const cell = createCell('sql');

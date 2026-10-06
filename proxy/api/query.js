@@ -52,7 +52,17 @@ export default async function handler(req, res) {
 
   const driver = DRIVERS[dbType];
 
+  // Um sinal só para "cliente desistiu" (req.signal, montado no server.js) e "tempo esgotado":
+  // o driver usa para interromper a consulta no próprio banco, não só parar de esperar.
+  const controller = new AbortController();
+  const abortFromClient = () => controller.abort(new Error("Consulta cancelada."));
+  if (req.signal?.aborted) abortFromClient();
+  req.signal?.addEventListener("abort", abortFromClient, { once: true });
+
   try {
+    // Cliente que já desistiu não justifica abrir conexão. Só encurta: nenhum guard é pulado.
+    controller.signal.throwIfAborted();
+
     // Camada 2: só SELECT/WITH, um único statement (validação real via AST).
     assertReadOnly(sql, dbType);
 
@@ -63,8 +73,9 @@ export default async function handler(req, res) {
 
     // Camada 3: o driver roda em transação read-only e limita as linhas no servidor.
     const started = Date.now();
-    const { columns, rows } = await withTimeout(
-      driver.runQuery(config, sql, { maxRows: MAX_ROWS }),
+    const { columns, rows } = await withAbort(
+      driver.runQuery(config, sql, { maxRows: MAX_ROWS, signal: controller.signal }),
+      controller,
       QUERY_TIMEOUT_MS,
     );
     const elapsedMs = Date.now() - started;
@@ -77,7 +88,11 @@ export default async function handler(req, res) {
       truncated: rows.length >= MAX_ROWS,
     });
   } catch (err) {
-    res.status(400).json({ error: sanitizeError(err) });
+    // Cancelada ou esgotada, o erro do driver ("canceling statement…") importa menos que o motivo.
+    const reason = controller.signal.aborted ? controller.signal.reason : err;
+    res.status(400).json({ error: sanitizeError(reason) });
+  } finally {
+    req.signal?.removeEventListener("abort", abortFromClient);
   }
 }
 
@@ -118,15 +133,21 @@ function isLocalOrigin(origin) {
   }
 }
 
-function withTimeout(promise, ms) {
-  let timer;
-  const timeout = new Promise((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error("Tempo limite da consulta excedido.")),
-      ms,
-    );
+// Responde assim que o sinal dispara (cancelamento ou tempo limite), sem esperar o driver
+// terminar de limpar; o tempo limite também dispara o sinal, para o driver parar o banco.
+function withAbort(promise, controller, ms) {
+  const timer = setTimeout(
+    () => controller.abort(new Error("Tempo limite da consulta excedido.")),
+    ms,
+  );
+  const aborted = new Promise((_, reject) => {
+    const { signal } = controller;
+    if (signal.aborted) reject(signal.reason);
+    signal.addEventListener("abort", () => reject(signal.reason), { once: true });
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  // O driver ainda rejeita depois (consulta cancelada); sem este catch seria unhandled rejection.
+  promise.catch(() => {});
+  return Promise.race([promise, aborted]).finally(() => clearTimeout(timer));
 }
 
 // Nunca deixar uma connection string vazar em uma mensagem de erro devolvida ao cliente.

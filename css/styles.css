@@ -196,8 +196,14 @@ button:hover {
 
 .remove-btn,
 .move-up-btn,
-.move-down-btn {
+.move-down-btn,
+.run-below-btn {
   padding: 0.2rem 0.5rem;
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* Nas pontas não há para onde mover; o clique já seria ignorado, então só sinaliza. */

@@ -20,6 +20,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   adaptResponse(res);
+  // Conexão fechada antes de a resposta terminar = o navegador cancelou (AbortController no fetch).
+  const clientGone = new AbortController();
+  res.on("close", () => {
+    if (!res.writableFinished) clientGone.abort();
+  });
+  req.signal = clientGone.signal;
   try {
     req.body = await readJson(req);
   } catch {

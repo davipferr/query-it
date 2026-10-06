@@ -18,8 +18,10 @@ export function missingSetting(settings = getSettings()) {
 }
 
 // POST /api/query com a conexão salva. Resolve com { columns, rows, rowCount, elapsedMs, truncated }.
-export async function runQuery(sql, settings = getSettings()) {
+// Abortar `signal` fecha a conexão; o proxy percebe e cancela a consulta no banco.
+export async function runQuery(sql, { settings = getSettings(), signal } = {}) {
   const res = await fetch(settings.proxyUrl, {
+    signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

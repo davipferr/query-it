@@ -29,6 +29,32 @@ export const MANY_ROWS = {
   mssql: 'select a.object_id from sys.all_objects a cross join (select 1 as x union all select 2) b',
 };
 
+// Consulta que leva vários segundos e passa pelo sql-guard, para testar o cancelamento.
+// SQL Server não tem sleep permitido (WAITFOR é bloqueado), então usa um cross join pesado.
+export const SLOW_QUERY = {
+  postgres: 'select pg_sleep(8)',
+  mysql: 'select sleep(8)',
+  mssql:
+    'select count_big(*) from sys.all_objects a cross join sys.all_objects b cross join sys.all_objects c',
+};
+
+// Quantas SLOW_QUERY ainda rodam no banco, vistas de outra sessão.
+const RUNNING_SLOW_QUERIES = {
+  postgres: "select count(*)::int as n from pg_stat_activity where wait_event = 'PgSleep' and pid <> pg_backend_pid()",
+  mysql:
+    "select count(*) as n from information_schema.processlist where command = 'Query' and info like 'select sleep(8)%' and id <> connection_id()",
+  mssql:
+    "select count(*) as n from sys.dm_exec_requests r cross apply sys.dm_exec_sql_text(r.sql_handle) t where r.session_id <> @@spid and t.text like '%cross join sys.all_objects c%' and t.text not like '%dm_exec_requests%'",
+};
+
+export async function countSlowQueries(dbType) {
+  return withConnection(dbType, async (run) => {
+    const result = await run(RUNNING_SLOW_QUERIES[dbType]);
+    const rows = dbType === 'postgres' ? result.rows : dbType === 'mysql' ? result[0] : result.recordset;
+    return Number(rows[0].n);
+  });
+}
+
 const CUSTOMERS = [
   [1, 'Ana Souza', 'ana@example.com', 'BR'],
   [2, 'Bruno Lima', 'bruno@example.com', 'BR'],

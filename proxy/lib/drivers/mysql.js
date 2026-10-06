@@ -32,18 +32,38 @@ function sslFromParam(value) {
   return { rejectUnauthorized: true };
 }
 
-export async function runQuery(config, sql, { maxRows }) {
+// Interrompe a consulta em andamento da conexão `threadId`. Precisa de outra conexão porque a
+// primeira está ocupada; usa a mesma config já checada pelo ssrf-guard. É SQL do driver, não do usuário.
+async function killQuery(config, threadId) {
+  let killer;
+  try {
+    killer = await mysql.createConnection({ ...config, connectTimeout: 8000 });
+    await killer.query(`KILL QUERY ${Number(threadId)}`);
+  } catch {
+    // Melhor esforço: se falhar, o MAX_EXECUTION_TIME ainda encerra a consulta.
+  } finally {
+    await killer?.end().catch(() => {});
+  }
+}
+
+export async function runQuery(config, sql, { maxRows, signal }) {
+  signal?.throwIfAborted();
   const connection = await mysql.createConnection({
     ...config,
     connectTimeout: 8000,
     multipleStatements: false,
   });
+  const cancel = () => killQuery(config, connection.threadId);
+  signal?.addEventListener('abort', cancel, { once: true });
 
   try {
+    signal?.throwIfAborted();
     await connection.query('SET SESSION MAX_EXECUTION_TIME = 10000');
     // Teto de linhas aplicado pelo servidor ao SELECT de topo (um LIMIT explícito do usuário prevalece).
     await connection.query('SET SESSION sql_select_limit = ?', [Number(maxRows)]);
     await connection.query('START TRANSACTION READ ONLY');
+    // Um KILL QUERY entre comandos acha a conexão ociosa e não para nada: checa antes da consulta.
+    signal?.throwIfAborted();
     const [rows, fields] = await connection.query(sql);
     const columns = fields.map((f) => f.name);
     return {
@@ -51,6 +71,7 @@ export async function runQuery(config, sql, { maxRows }) {
       rows: rows.slice(0, maxRows).map((row) => columns.map((c) => row[c])),
     };
   } finally {
+    signal?.removeEventListener('abort', cancel);
     // Fechar a conexão descarta a transação; nada é commitado.
     await connection.end();
   }

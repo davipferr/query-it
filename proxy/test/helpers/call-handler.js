@@ -3,10 +3,12 @@ import handler from '../../api/query.js';
 
 let ipCounter = 0;
 
-export async function callHandler(body, { method = 'POST', headers = {} } = {}) {
+// `signal` faz o papel do cliente fechando a conexão (o server.js monta o mesmo req.signal).
+export async function callHandler(body, { method = 'POST', headers = {}, signal } = {}) {
   const req = {
     method,
     body,
+    signal,
     // IP novo por chamada para o rate limit não interferir entre testes.
     headers: { 'x-forwarded-for': `test-${++ipCounter}`, ...headers },
     socket: { remoteAddress: '127.0.0.1' },

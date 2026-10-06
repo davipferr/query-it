@@ -1,7 +1,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { callHandler } from './helpers/call-handler.js';
-import { DATABASES, MANY_ROWS, isReachable, seed } from './helpers/databases.js';
+import { DATABASES, MANY_ROWS, SLOW_QUERY, countSlowQueries, isReachable, seed } from './helpers/databases.js';
 import { selectPreset } from '../../js/sql-preset.js';
 
 describe('POST /api/query: validação (sem banco)', () => {
@@ -105,7 +105,26 @@ describe('POST /api/query: validação (sem banco)', () => {
     });
     assert.doesNotMatch(JSON.stringify(body), /senha-secreta/);
   });
+
+  test('requisição já cancelada não chega a conectar', async () => {
+    const { status, body } = await callHandler(
+      { dbType: 'postgres', connectionString: 'postgres://u:p@127.0.0.1:1/db', sql: 'select 1' },
+      { signal: AbortSignal.abort() },
+    );
+    assert.equal(status, 400);
+    assert.equal(body.error, 'Consulta cancelada.');
+  });
 });
+
+// Repete `check` até dar true ou estourar o prazo.
+async function waitFor(check, ms) {
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (await check()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return false;
+}
 
 // Cada banco só roda se estiver de pé (npm run db:up); senão os testes aparecem como skipped.
 for (const dbType of Object.keys(DATABASES)) {
@@ -204,6 +223,24 @@ for (const dbType of Object.keys(DATABASES)) {
       const { status, body } = await run('select * from tabela_que_nao_existe');
       assert.equal(status, 400);
       assert.ok(body.error);
+    });
+
+    test('cancelar a requisição interrompe a consulta dentro do banco', async () => {
+      const controller = new AbortController();
+      const pending = callHandler(
+        { dbType, connectionString: DATABASES[dbType], sql: SLOW_QUERY[dbType] },
+        { signal: controller.signal },
+      );
+      assert.ok(await waitFor(async () => (await countSlowQueries(dbType)) > 0, 5000), 'a consulta lenta não começou');
+
+      const abortedAt = Date.now();
+      controller.abort();
+      const { status, body } = await pending;
+      assert.equal(status, 400);
+      assert.equal(body.error, 'Consulta cancelada.');
+      assert.ok(Date.now() - abortedAt < 3000, 'o handler demorou para responder ao cancelamento');
+      // O que importa: o banco parou de executar, não só o proxy parou de esperar.
+      assert.ok(await waitFor(async () => (await countSlowQueries(dbType)) === 0, 3000), 'a consulta continua rodando no banco');
     });
 
     if (dbType === 'postgres') {

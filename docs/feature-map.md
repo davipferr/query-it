@@ -51,14 +51,15 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 
 | | |
 |---|---|
-| Files | `js/notebook/cell.js` (shell), `js/notebook/editor.js` (CodeMirror), `js/app.js` (buttons) |
+| Files | `js/notebook/cell.js` (shell), `js/notebook/editor.js` (CodeMirror), `js/notebook/runner.js` (batch runs), `js/app.js` (buttons) |
 | Add | `#add-sql-cell`, `#add-js-cell`. Cells are appended to `#cells`. |
-| Cell DOM | `.cell` > `.cell-header` (`.cell-type`, `.cell-name` SQL only, `.cell-language` select, `.run-btn` "▶ Run", `.cell-status`, `.move-up-btn` "▲", `.move-down-btn` "▼", `.remove-btn` "✕") + `.cell-source` (editor) + `.cell-output` |
-| Run | `.run-btn`, or Ctrl/Cmd+Enter in the editor (`Mod-Enter`, highest precedence) |
+| Cell DOM | `.cell` > `.cell-header` (`.cell-type`, `.cell-name` SQL only, `.cell-language` select, `.run-btn` "▶ Run", `.run-below-btn` "▶↓", `.cell-status`, `.move-up-btn` "▲", `.move-down-btn` "▼", `.remove-btn` "✕") + `.cell-source` (editor) + `.cell-output` |
+| Run | `.run-btn`, or Ctrl/Cmd+Enter in the editor (`Mod-Enter`, highest precedence). One run per cell at a time: while a SQL cell runs, `.run-btn` reads "■ Stop" and clicking it cancels the query (§4); while a JS cell runs, `.run-btn` is `disabled` (running JS can't be interrupted). `cell.run()` resolves `true`/`false` (success); `cell.stop()` cancels. |
+| Run all / from here | `#run-all` "▶▶ Rodar tudo" runs every cell in DOM order; `.run-below-btn` runs from that cell to the end (it dispatches the bubbling `run-from` event, handled in `app.js`). One cell at a time, and the batch **stops at the first cell that fails** (blocked, error, cancelled, missing settings). While a batch runs, `#run-all` reads "■ Parar": it cancels the current SQL query, doesn't start the next cell and releases the batch right away (a running JS cell can't be stopped; it finishes on its own, with its `.run-btn` disabled until then). Only one batch at a time; starting another is ignored. The cell list is fixed when the batch starts. A batch that reaches a cell already running on its own waits for that run and uses its result (`cell.run()` returns the run in progress). A cell removed while it runs never writes its variables. |
 | Ids | `cell_1`, `cell_2`… from a module counter. The counter never resets, so ids keep counting up after a removal. Restored cells keep their saved id, and the counter starts after the highest one (§9). |
 | Language select | Changes **only syntax highlighting** (`LANGUAGES` in `editor.js`, loaded lazily from esm.sh). Execution always follows the cell type. |
 | Move | `.move-up-btn` / `.move-down-btn` swap the cell with its sibling in `#cells`; the editor, output and status move with it. The first cell's ▲ and the last cell's ▼ are dimmed and not clickable (CSS `:first-child` / `:last-child`). Moving doesn't rerun anything or change kernel state: variables still reflect the order cells were **run**, not their position. |
-| Remove | `.remove-btn` destroys the editor (and its schema subscription) and the element. The cell's variable stays in kernel state. |
+| Remove | `.remove-btn` cancels a running query, destroys the editor (and its schema subscription) and the element, and removes the variables this cell still owns from kernel state (§5). |
 | SQL autocomplete | Only after the sidebar schema is loaded (§2). lang-sql completes schemas, tables of the default schema (`public` / `dbo` / the only schema) and `table.`/`alias.` columns; `unqualifiedColumns` in `editor.js` adds bare column names of the tables mentioned in the cell text (detail `table · type`). Names that need it are quoted for the dialect (`"order items"`). Popup: `.cm-tooltip-autocomplete li` (`.cm-completionLabel`). Ctrl+Space opens it explicitly. |
 
 **Driving the editor:** click `.cell-source .cm-content`, then type, or call `cell.editor.setValue()` from code. The editor's text is `view.state.doc`; `textContent` of `.cell-source` includes line numbers.
@@ -68,12 +69,13 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | | |
 |---|---|
 | Files | `js/notebook/sql-cell.js`, `js/sql-guard.js` (client pre-check), `js/lib/api.js` (request) |
-| Flow | client pre-check, then settings check, then `POST proxyUrl`, then render the table, then `setVar(name, { columns, rows })` |
-| Variable name | `.cell-name` input (default: the cell id). Sanitized to a JS identifier (invalid characters become `_`, a leading digit gets a `_` prefix). |
+| Flow | client pre-check, then settings check, then `POST proxyUrl`, then render the table, then `replaceVarsOf(cellId, [[name, { columns, rows }]])` (only on success) |
+| Variable name | `.cell-name` input (default: the cell id). Sanitized to a JS identifier by `toVarName` (invalid characters become `_`, a leading digit gets a `_` prefix). Renaming and rerunning removes the old name. |
 | Output | `.cell-output table` with `thead th` / `tbody td`; `null` is shown as `NULL`, objects as JSON |
-| Status | `"N linha(s) em Xms"`, plus `" (truncado)"` at the 1000-row cap · `Executando…` · `Erro (Xms)` · `Bloqueado` · `Erro de rede` |
+| Status | `"N linha(s) em Xms"`, plus `" (truncado)"` at the 1000-row cap · `Executando…` · `Erro (Xms)` · `Bloqueado` · `Erro de rede` · `Cancelada (Xms)` |
+| Cancel | "■ Stop" on `.run-btn` (or `#run-all` during a batch) aborts the `fetch` (`AbortController`, `signal` passed to `runQuery`). The proxy sees the connection close and cancels the query **inside the database** (§7). Output: "Consulta cancelada." |
 
-**Exercise:** `select * from customers` gives `4 linha(s)`. `select n from generate_series(1, 1500) as n` gives `1000 linha(s) … (truncado)`.
+**Exercise:** `select * from customers` gives `4 linha(s)`. `select n from generate_series(1, 1500) as n` gives `1000 linha(s) … (truncado)`. `select pg_sleep(8)`, then "■ Stop": `Cancelada (…ms)` within a second.
 **Messages (client pre-check, `js/sql-guard.js`):** "Escreva uma consulta antes de rodar." · "Apenas um comando por célula é permitido." · "Somente consultas de leitura (SELECT) são permitidas." · "A consulta deve começar com SELECT ou WITH."
 **Messages (settings):** "Configure a connection string em Configurações." · "Configure o Proxy URL em Configurações." (the status isn't updated in these two cases)
 **Messages (proxy):** see §7.
@@ -84,13 +86,15 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | | |
 |---|---|
 | Files | `js/notebook/js-cell.js`, `js/notebook/kernel-state.js` |
-| Execution | `new Function('charts', 'el', 'console', 'vars', ...varNames, code)`. This is intentional; it runs the user's own code. |
-| In scope | every SQL cell variable (`{ columns, rows }`, with `rows` as objects keyed by column), `vars` (a shallow copy of the whole kernel state, name → value; a cell named `vars` shadows it), `charts` (§6), `el` (this cell's `.cell-output`), `console` |
+| Execution | `new AsyncFunction('charts', 'el', 'console', 'vars', 'setVar', ...varNames, code)` (the async version of `new Function`), so the code can use top-level `await` and a returned Promise is awaited. This is intentional; it runs the user's own code. |
+| In scope | every kernel variable (SQL cells give `{ columns, rows }`, with `rows` as objects keyed by column), `vars` (a shallow copy of the whole kernel state, name → value), `setVar(name, value)` (creates a variable; name sanitized like SQL names), `charts` (§6), `el` (this cell's `.cell-output`), `console`. A variable named `vars` or `setVar` shadows the built-in. |
+| `setVar` | Changes are applied **only when the cell finishes without error**, all at once, and replace whatever this cell set on its previous run. |
 | Output | a non-`undefined` return value is shown in a `<pre>` (objects as pretty JSON). Errors appear in `.error`. |
-| Status | `OK em Xms` · `Erro` |
+| Status | `Executando…` · `OK em Xms` (includes awaited time) · `Erro` |
+| Kernel state | `js/notebook/kernel-state.js`: a prototype-less object (`__proto__` is an ordinary name) plus an owner per name (the cell that last wrote it). `replaceVarsOf(owner, entries)` swaps everything that cell owns; `removeVarsOf(owner)` runs when the cell is removed. A name another cell rewrote later belongs to that cell and survives. |
 
-**Exercise:** after the SQL cell `cell_1` returns customers, `return cell_1.rows.length` gives `4`, and `return Object.keys(vars)` lists `["cell_1"]`.
-**Notes:** JS cells only read state; they don't create variables. The code runs synchronously; a returned Promise is shown as `{}`.
+**Exercise:** after the SQL cell `cell_1` returns customers, `return cell_1.rows.length` gives `4`, and `return Object.keys(vars)` lists `["cell_1"]`. `setVar('total', cell_1.rows.length)` in one JS cell, then `return total` in the next gives `4`. `await new Promise(r => setTimeout(r, 500)); return 1` shows `1` with `OK em ~500ms`.
+**Notes:** variables reflect the order cells were **run**, not their position.
 
 ## 6. Charts (`charts` inside JS cells)
 
@@ -113,17 +117,18 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | Errors | `{ error }` with 400 (validation, guard, SSRF, database error), 403 (origin not allowed), 405 (not POST), 429 (rate limit: 30 per minute per IP), 404 (other paths) |
 | CORS | A browser `Origin` must be local (`localhost`, `127.0.0.1`, `[::1]`, any port) or listed in `ALLOWED_ORIGINS` (comma-separated, read on each request). Otherwise 403 before anything else runs, including preflight. An empty list means local-only. Requests without `Origin` (curl) skip CORS. |
 | Listens on | `127.0.0.1:3000` (`HOST`/`PORT` override) |
-| Order | CORS → rate limit → validation → `assertReadOnly` → `parseConnection` → `assertHostIsSafe` → `runQuery` (read-only, 1000-row cap) → 12s timeout. See CLAUDE.md invariants 1–2. |
+| Order | CORS → rate limit → validation → `assertReadOnly` → `parseConnection` → `assertHostIsSafe` → `runQuery` (read-only, 1000-row cap) → 12s timeout. See CLAUDE.md invariants 1–2. A request already cancelled stops right after validation, before any guard or connection. |
+| Cancel | `server.js` sets `req.signal`, aborted when the client closes the connection before the response ends. The handler combines it with the 12s timeout into one `AbortSignal` passed as `runQuery(config, sql, { maxRows, signal })`, and answers as soon as it fires. Drivers stop the query in the database: Postgres runs `pg_cancel_backend(pid)` and MySQL `KILL QUERY threadId`, each from a second connection with the **same** checked config; SQL Server calls `request.cancel()` on the same connection. Best effort: if the cancel fails, `statement_timeout` / `MAX_EXECUTION_TIME` / `requestTimeout` still end it. Drivers also check the signal before each statement, because a cancel sent between statements finds an idle session. **Residual risk:** a cancel still in flight (up to 8s to connect) after the session closed could hit a reused pid / thread id of another session of the same database user. It only cancels a query, never kills a connection. Only the Postgres cancel has run against a real database; MySQL and SQL Server were only read. Tests: `callHandler(body, { signal })`; the per-database "cancelar a requisição…" test checks the query is gone from the database (`countSlowQueries` in `proxy/test/helpers/databases.js`). |
 
 **Exercise without the UI:** `callHandler()` in `proxy/test/helpers/call-handler.js`, or `curl -X POST localhost:3000/api/query -H 'Content-Type: application/json' -d '{...}'`.
-**Messages:** `Origem não permitida.` · `dbType inválido…` · `connectionString é obrigatório.` · `sql é obrigatório.` · `SQL inválido: …` · `Apenas um comando por execução é permitido.` · `Somente consultas SELECT são permitidas (recebido: X).` · `SELECT ... INTO não é permitido.` · `Função não permitida: X.` · `Conexão recusada: host resolve para um endereço não permitido (…)` · `Muitas requisições…` · `Tempo limite da consulta excedido.` · `JSON inválido.` (from `server.js`) · Postgres `cannot execute X in a read-only transaction`.
+**Messages:** `Origem não permitida.` · `dbType inválido…` · `connectionString é obrigatório.` · `sql é obrigatório.` · `SQL inválido: …` · `Apenas um comando por execução é permitido.` · `Somente consultas SELECT são permitidas (recebido: X).` · `SELECT ... INTO não é permitido.` · `Função não permitida: X.` · `Conexão recusada: host resolve para um endereço não permitido (…)` · `Muitas requisições…` · `Tempo limite da consulta excedido.` · `Consulta cancelada.` · `JSON inválido.` (from `server.js`) · Postgres `cannot execute X in a read-only transaction`.
 
 ## Shared helpers (`js/lib/`)
 
 | | |
 |---|---|
 | `js/lib/dom.js` | `h(tag, props, ...children)` builds elements (text children are always text nodes); `show(el, ...children)` replaces content (empty call = clear); `showMessage(el, text, className = 'hint')`. **The only way to build DOM**: `innerHTML`/`outerHTML`/`insertAdjacentHTML` fail ESLint. |
-| `js/lib/api.js` | `runQuery(sql)` posts to the proxy with the saved settings and resolves with the §7 200 body; throws `ProxyError` (has `status`) for proxy errors, the fetch error for network failures. `missingSetting()` returns `'connectionString'`, `'proxyUrl'` or `null`. **The only module allowed to call `fetch`.** |
+| `js/lib/api.js` | `runQuery(sql, { settings, signal })` posts to the proxy (default: the saved settings; `signal` aborts the request) and resolves with the §7 200 body; throws `ProxyError` (has `status`) for proxy errors, the fetch error for network failures. `missingSetting()` returns `'connectionString'`, `'proxyUrl'` or `null`. **The only module allowed to call `fetch`.** |
 
 ## 8. Static server
 
@@ -174,6 +179,7 @@ Every source file and the section that covers it (`npm run lint` checks this lis
 | `js/notebook/sql-cell.js` | 4 |
 | `js/notebook/js-cell.js` | 5 |
 | `js/notebook/kernel-state.js` | 5 |
+| `js/notebook/runner.js` | 3 |
 | `js/notebook/persistence.js` | 9 |
 | `proxy/server.js` | 7 |
 | `proxy/api/query.js` | 7 |

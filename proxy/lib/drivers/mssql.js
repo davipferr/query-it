@@ -33,7 +33,8 @@ export function parseConnection(connectionString) {
   };
 }
 
-export async function runQuery({ host, ...config }, sqlText, { maxRows }) {
+export async function runQuery({ host, ...config }, sqlText, { maxRows, signal }) {
+  signal?.throwIfAborted();
   // Pool próprio por consulta: sql.connect() devolve um pool global, compartilhado entre
   // requisições simultâneas com connection strings diferentes.
   const pool = await new sql.ConnectionPool({
@@ -51,7 +52,17 @@ export async function runQuery({ host, ...config }, sqlText, { maxRows }) {
     try {
       // Teto de linhas no servidor, sem reescrever a consulta (vale também com TOP/DISTINCT/CTE).
       await new sql.Request(transaction).query(`SET ROWCOUNT ${Number(maxRows)}`);
-      const result = await new sql.Request(transaction).query(sqlText);
+      signal?.throwIfAborted();
+      // cancel() manda um "attention" ao servidor na mesma conexão: não precisa de outra.
+      const request = new sql.Request(transaction);
+      const cancel = () => request.cancel();
+      signal?.addEventListener('abort', cancel, { once: true });
+      let result;
+      try {
+        result = await request.query(sqlText);
+      } finally {
+        signal?.removeEventListener('abort', cancel);
+      }
       const recordset = result.recordset || [];
       const columns = Object.keys(recordset.columns || recordset[0] || {});
       return {

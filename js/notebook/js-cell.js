@@ -1,23 +1,37 @@
-import { getState } from "./kernel-state.js";
+import { getState, replaceVarsOf, toVarName } from "./kernel-state.js";
 import * as charts from "../charts.js";
 import { h, show } from "../lib/dom.js";
 
+// Construtor de funções async: o código da célula pode usar `await` no topo.
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+
 // Executa o código da célula com acesso direto às variáveis de células SQL/JS
 // anteriores (via kernel-state), ao utilitário `charts` e ao elemento de saída (`el`).
-export function runJsCell({ code, outputEl, statusEl }) {
+// Resolve com true se a célula terminou sem erro; "Rodar tudo" para no primeiro false.
+export async function runJsCell({ code, outputEl, statusEl, id }) {
   show(outputEl);
   const state = getState();
   const names = Object.keys(state);
   const values = Object.values(state);
 
+  // setVar só vale se a célula terminar sem erro: uma célula que falha no meio não deixa
+  // metade das variáveis gravadas, igual à célula SQL que só grava com sucesso.
+  const pending = new Map();
+  const setVar = (name, value) => {
+    pending.set(toVarName(name), value);
+  };
+
+  statusEl.textContent = "Executando…";
   const started = performance.now();
   try {
-    // `vars` vem antes das variáveis para que uma célula chamada "vars" a sobrescreva.
-    // É uma cópia rasa: reatribuir uma chave dentro da célula não altera o kernel.
-    const fn = new Function("charts", "el", "console", "vars", ...names, code);
-    const result = fn(charts, outputEl, console, { ...state }, ...values);
+    // `vars` e `setVar` vêm antes das variáveis para que uma célula com o mesmo nome os sobrescreva.
+    // `vars` é uma cópia rasa: reatribuir uma chave dentro da célula não altera o kernel.
+    const fn = new AsyncFunction("charts", "el", "console", "vars", "setVar", ...names, code);
+    const result = await fn(charts, outputEl, console, { ...state }, setVar, ...values);
     const elapsed = Math.round(performance.now() - started);
     statusEl.textContent = `OK em ${elapsed}ms`;
+    // Célula removida durante um await: gravar agora deixaria variáveis que ninguém mais remove.
+    if (outputEl.isConnected) replaceVarsOf(id, [...pending]);
 
     if (result !== undefined) {
       outputEl.appendChild(
@@ -30,8 +44,10 @@ export function runJsCell({ code, outputEl, statusEl }) {
         ),
       );
     }
+    return true;
   } catch (err) {
     statusEl.textContent = "Erro";
-    show(outputEl, h("div", { className: "error" }, err.message));
+    show(outputEl, h("div", { className: "error" }, err?.message ?? String(err)));
+    return false;
   }
 }

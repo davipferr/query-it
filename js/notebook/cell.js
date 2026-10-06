@@ -2,12 +2,18 @@ import { runSqlCell } from './sql-cell.js';
 import { runJsCell } from './js-cell.js';
 import { createEditor, LANGUAGES } from './editor.js';
 import { h } from '../lib/dom.js';
+import { removeVarsOf } from './kernel-state.js';
 
 let counter = 0;
 
 // Evento que sobe do .cell quando o código muda; o resto (nome, linguagem, ordem) já gera
 // eventos nativos ou mutações no DOM que o app observa.
 export const CELL_CHANGE_EVENT = 'cell-change';
+// Evento que sobe do .cell pedindo "rodar desta célula até o fim"; quem roda em lote é o app (runner.js).
+export const RUN_FROM_EVENT = 'run-from';
+
+const RUN_LABEL = '▶ Run';
+const STOP_LABEL = '■ Stop';
 
 const cellsByElement = new WeakMap();
 
@@ -28,7 +34,12 @@ export function createCell(type, saved = null) {
 
   const outputEl = h('div', { className: 'cell-output' });
   const statusEl = h('span', { className: 'cell-status' });
-  const runBtn = h('button', { type: 'button', className: 'run-btn' }, '▶ Run');
+  const runBtn = h('button', { type: 'button', className: 'run-btn' }, RUN_LABEL);
+  const runBelowBtn = h(
+    'button',
+    { type: 'button', className: 'run-below-btn', title: 'Rodar desta célula até o fim' },
+    '▶↓',
+  );
   const moveUpBtn = h('button', { type: 'button', className: 'move-up-btn', title: 'Mover célula para cima' }, '▲');
   const moveDownBtn = h('button', { type: 'button', className: 'move-down-btn', title: 'Mover célula para baixo' }, '▼');
   const removeBtn = h('button', { type: 'button', className: 'remove-btn', title: 'Remover célula' }, '✕');
@@ -53,6 +64,7 @@ export function createCell(type, saved = null) {
       nameInput ?? h('span', { style: { flex: '1' } }),
       languageSelect,
       runBtn,
+      runBelowBtn,
       statusEl,
       moveUpBtn,
       moveDownBtn,
@@ -77,12 +89,46 @@ export function createCell(type, saved = null) {
 
   languageSelect.addEventListener('change', () => editor.setLanguage(languageSelect.value));
 
-  runBtn.addEventListener('click', () => {
-    if (type === 'sql') {
-      runSqlCell({ sql: editor.getValue(), outputEl, statusEl, nameInput, id });
-    } else {
-      runJsCell({ code: editor.getValue(), outputEl, statusEl });
+  // Uma execução por vez. Só a SQL pode ser interrompida: JS roda no próprio navegador e não
+  // tem como parar código já em andamento, então o botão fica desabilitado até ela terminar.
+  let controller = null;
+  let current = null;
+
+  // Chamar run() com a célula já rodando devolve a execução em andamento em vez de recusar:
+  // assim "Rodar tudo" que chega numa célula rodada à mão espera por ela e usa o resultado.
+  function run() {
+    current ??= execute().finally(() => {
+      current = null;
+    });
+    return current;
+  }
+
+  async function execute() {
+    controller = new AbortController();
+    if (type === 'sql') runBtn.textContent = STOP_LABEL;
+    else runBtn.disabled = true;
+    try {
+      return type === 'sql'
+        ? await runSqlCell({ sql: editor.getValue(), outputEl, statusEl, nameInput, id, signal: controller.signal })
+        : await runJsCell({ code: editor.getValue(), outputEl, statusEl, id });
+    } finally {
+      controller = null;
+      runBtn.textContent = RUN_LABEL;
+      runBtn.disabled = false;
     }
+  }
+
+  function stop() {
+    controller?.abort();
+  }
+
+  runBtn.addEventListener('click', () => {
+    if (controller) stop();
+    else run();
+  });
+
+  runBelowBtn.addEventListener('click', () => {
+    el.dispatchEvent(new CustomEvent(RUN_FROM_EVENT, { bubbles: true }));
   });
 
   // Mover só reordena o DOM: as variáveis do kernel seguem a ordem de execução, não a posição.
@@ -97,8 +143,11 @@ export function createCell(type, saved = null) {
   });
 
   removeBtn.addEventListener('click', () => {
+    stop();
     editor.destroy();
     el.remove();
+    // A variável sai junto, senão células JS seguiriam lendo um resultado de célula que não existe mais.
+    removeVarsOf(id);
   });
 
   // Célula restaurada não roda sozinha: isso consultaria o banco sem o usuário pedir.
@@ -112,17 +161,18 @@ export function createCell(type, saved = null) {
     source: editor.getValue(),
   });
 
-  const cell = { id, type, el, editor, outputEl, statusEl, nameInput, serialize };
+  const cell = { id, type, el, editor, outputEl, statusEl, nameInput, serialize, run, stop };
   cellsByElement.set(el, cell);
   return cell;
 }
 
-// A ordem salva é a ordem no DOM, então mover células não precisa de controle à parte.
+// Células na ordem do DOM: é a ordem salva e a ordem de "Rodar tudo".
+export function cellsIn(container) {
+  return [...container.children].map((el) => cellsByElement.get(el)).filter(Boolean);
+}
+
 export function serializeCells(container) {
-  return [...container.children]
-    .map((el) => cellsByElement.get(el))
-    .filter(Boolean)
-    .map((cell) => cell.serialize());
+  return cellsIn(container).map((cell) => cell.serialize());
 }
 
 export function insertSqlPreset(container, sqlText) {
