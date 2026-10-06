@@ -92,12 +92,13 @@ const theme = EditorView.theme({
   '&.cm-focused': { outline: 'none' },
 });
 
-export function createEditor({ parent, language, placeholderText = '', onRun }) {
+export function createEditor({ parent, language, doc = '', placeholderText = '', onRun, onChange }) {
   const languageSlot = new Compartment();
 
   const view = new EditorView({
     parent,
     state: EditorState.create({
+      doc,
       extensions: [
         // Ctrl/Cmd+Enter roda a célula; precedência alta para vencer os atalhos padrão.
         Prec.highest(
@@ -108,6 +109,9 @@ export function createEditor({ parent, language, placeholderText = '', onRun }) 
         theme,
         placeholder(placeholderText),
         languageSlot.of([]),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) onChange?.();
+        }),
       ],
     }),
   });

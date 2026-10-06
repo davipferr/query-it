@@ -31,6 +31,12 @@
           <button id="add-sql-cell">+ Célula SQL</button>
           <button id="add-js-cell">+ Célula JS</button>
           <span class="hint">Ctrl+Enter roda a célula focada</span>
+          <span id="notebook-status" class="hint warning"></span>
+          <span id="notebook-conflict" class="notebook-conflict hidden">
+            <span class="hint warning">O notebook foi alterado em outra aba; esta aba parou de salvar.</span>
+            <button id="notebook-reload" type="button">Recarregar</button>
+            <button id="notebook-keep" type="button">Manter esta versão</button>
+          </span>
         </div>
         <div id="cells" class="cells"></div>
       </main>

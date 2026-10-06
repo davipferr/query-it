@@ -5,9 +5,26 @@ import { h } from '../lib/dom.js';
 
 let counter = 0;
 
-export function createCell(type) {
-  counter += 1;
-  const id = `cell_${counter}`;
+// Evento que sobe do .cell quando o código muda; o resto (nome, linguagem, ordem) já gera
+// eventos nativos ou mutações no DOM que o app observa.
+export const CELL_CHANGE_EVENT = 'cell-change';
+
+const cellsByElement = new WeakMap();
+
+// Chamado antes de restaurar células salvas, para um id novo nunca repetir um id restaurado.
+export function reserveCellIds(n) {
+  counter = Math.max(counter, n);
+}
+
+// `saved` vem de persistence.js: { id, name, language, source }, já validado.
+export function createCell(type, saved = null) {
+  let id = saved?.id;
+  if (!id) {
+    counter += 1;
+    id = `cell_${counter}`;
+  }
+  // hasOwn, não LANGUAGES[x]: "constructor" ou "__proto__" vindos do storage existiriam via protótipo.
+  const language = saved && Object.hasOwn(LANGUAGES, saved.language) ? saved.language : type;
 
   const outputEl = h('div', { className: 'cell-output' });
   const statusEl = h('span', { className: 'cell-status' });
@@ -16,11 +33,13 @@ export function createCell(type) {
   const moveDownBtn = h('button', { type: 'button', className: 'move-down-btn', title: 'Mover célula para baixo' }, '▼');
   const removeBtn = h('button', { type: 'button', className: 'remove-btn', title: 'Remover célula' }, '✕');
   const nameInput =
-    type === 'sql' ? h('input', { className: 'cell-name', placeholder: 'nome da variável (opcional)', value: id }) : null;
+    type === 'sql'
+      ? h('input', { className: 'cell-name', placeholder: 'nome da variável (opcional)', value: saved ? saved.name : id })
+      : null;
   const languageSelect = h(
     'select',
     { className: 'cell-language', title: 'Linguagem do destaque de sintaxe' },
-    Object.entries(LANGUAGES).map(([key, { label }]) => h('option', { value: key, selected: key === type }, label)),
+    Object.entries(LANGUAGES).map(([key, { label }]) => h('option', { value: key, selected: key === language }, label)),
   );
   const sourceEl = h('div', { className: 'cell-source' });
 
@@ -46,7 +65,9 @@ export function createCell(type) {
   // A linguagem do editor muda só o destaque de sintaxe; a execução segue o tipo da célula.
   const editor = createEditor({
     parent: sourceEl,
-    language: type,
+    language,
+    doc: saved?.source ?? '',
+    onChange: () => el.dispatchEvent(new CustomEvent(CELL_CHANGE_EVENT, { bubbles: true })),
     placeholderText:
       type === 'sql'
         ? 'SELECT * FROM ...'
@@ -80,7 +101,28 @@ export function createCell(type) {
     el.remove();
   });
 
-  return { id, type, el, editor, outputEl, statusEl, nameInput };
+  // Célula restaurada não roda sozinha: isso consultaria o banco sem o usuário pedir.
+  if (saved) statusEl.textContent = 'Não executada';
+
+  const serialize = () => ({
+    id,
+    type,
+    ...(nameInput ? { name: nameInput.value } : {}),
+    language: languageSelect.value,
+    source: editor.getValue(),
+  });
+
+  const cell = { id, type, el, editor, outputEl, statusEl, nameInput, serialize };
+  cellsByElement.set(el, cell);
+  return cell;
+}
+
+// A ordem salva é a ordem no DOM, então mover células não precisa de controle à parte.
+export function serializeCells(container) {
+  return [...container.children]
+    .map((el) => cellsByElement.get(el))
+    .filter(Boolean)
+    .map((cell) => cell.serialize());
 }
 
 export function insertSqlPreset(container, sqlText) {

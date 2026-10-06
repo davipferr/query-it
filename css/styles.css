@@ -41,6 +41,7 @@ button {
   padding: 0.4rem 0.75rem;
   cursor: pointer;
   font-size: 0.85rem;
+  white-space: nowrap;
 }
 
 button:hover {
@@ -118,6 +119,7 @@ button:hover {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 1rem;
@@ -130,6 +132,16 @@ button:hover {
 
 .hint.warning {
   color: #e0b34f;
+}
+
+.notebook-conflict {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.notebook-conflict.hidden {
+  display: none;
 }
 
 .cells {
