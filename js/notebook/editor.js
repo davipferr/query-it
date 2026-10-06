@@ -84,6 +84,16 @@ export const LANGUAGES = {
   },
 };
 
+// Dialeto do sql-formatter para cada tipo de banco.
+const FORMATTER_DIALECTS = { postgres: 'postgresql', mysql: 'mysql', mssql: 'transactsql' };
+
+// Formata o SQL no dialeto da conexão. O pacote só é baixado no primeiro uso.
+// Lança erro quando o formatador não entende a consulta; quem chama mostra a mensagem.
+export async function formatSql(sql, dbType) {
+  const { format } = await import('sql-formatter');
+  return format(sql, { language: FORMATTER_DIALECTS[dbType] ?? 'sql', tabWidth: 2 });
+}
+
 const theme = EditorView.theme({
   '&': { fontSize: '0.85rem', backgroundColor: '#0b0d11' },
   '.cm-gutters': { backgroundColor: '#0b0d11' },

@@ -9,7 +9,7 @@ import {
 } from './notebook/cell.js';
 import { runFrom, stopBatch, isBatchRunning } from './notebook/runner.js';
 import { loadNotebook, saveNotebook, maxCellNumber, STORAGE_KEY } from './notebook/persistence.js';
-import { initSchemaExplorer } from './schema-explorer.js';
+import { initSchemaExplorer, resetSchemaExplorer } from './schema-explorer.js';
 
 const cellsContainer = document.getElementById('cells');
 const notebookStatus = document.getElementById('notebook-status');
@@ -106,10 +106,30 @@ document.getElementById('add-js-cell').addEventListener('click', () => {
   cell.editor.focus();
 });
 
-const settingsUI = initSettingsUI();
+document.getElementById('add-md-cell').addEventListener('click', () => {
+  const cell = createCell('md');
+  cellsContainer.appendChild(cell.el);
+  cell.editor.focus();
+});
+
+const schemaTree = document.getElementById('schema-tree');
+
+// Conexão diferente (outra conexão, outro tipo de banco ou outra connection string): o schema
+// carregado era do banco anterior, e os editores SQL precisam do dialeto novo.
+const connectionIdentity = ({ dbType, connectionString }) => `${dbType}\n${connectionString}`;
+let currentConnection = connectionIdentity(getSettings());
+
+const settingsUI = initSettingsUI({
+  onSave: (settings) => {
+    const next = connectionIdentity(settings);
+    if (next === currentConnection) return;
+    currentConnection = next;
+    resetSchemaExplorer(schemaTree);
+  },
+});
 
 initSchemaExplorer({
-  container: document.getElementById('schema-tree'),
+  container: schemaTree,
   onPickTable: (sql) => insertSqlPreset(cellsContainer, sql),
 });
 

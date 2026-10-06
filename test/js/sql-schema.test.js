@@ -8,7 +8,33 @@ import {
   setSchemaTables,
   getSchemaTables,
   onSchemaChange,
+  filterSchemaTables,
 } from "../../js/notebook/sql-schema.js";
+
+describe("filterSchemaTables", () => {
+  const list = [
+    { schema: "public", table: "customers", columns: [{ name: "id" }, { name: "email" }] },
+    { schema: "public", table: "orders", columns: [{ name: "customer_id" }, { name: "total" }] },
+    { schema: "sales", table: "order items", columns: [{ name: "qty" }] },
+  ];
+
+  test("vazio devolve tudo sem colunas destacadas", () => {
+    assert.deepEqual(filterSchemaTables(list, " ").map((t) => [t.table, t.matchedColumns]), [
+      ["customers", []],
+      ["orders", []],
+      ["order items", []],
+    ]);
+  });
+
+  test("nome da tabela (com schema) entra inteiro; coluna entra com quais bateram", () => {
+    assert.deepEqual(filterSchemaTables(list, "CUSTOMER").map((t) => [t.table, t.matchedColumns]), [
+      ["customers", []],
+      ["orders", ["customer_id"]],
+    ]);
+    assert.deepEqual(filterSchemaTables(list, "sales.").map((t) => t.table), ["order items"]);
+    assert.deepEqual(filterSchemaTables(list, "nada"), []);
+  });
+});
 
 const TABLES = [
   { schema: "public", table: "customers", columns: [{ name: "id", type: "integer" }, { name: "email", type: "text" }] },

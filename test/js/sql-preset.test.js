@@ -1,6 +1,6 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { selectPreset } from "../../js/sql-preset.js";
+import { selectPreset, TEST_QUERY } from "../../js/sql-preset.js";
 import { precheckReadOnly } from "../../js/sql-guard.js";
 import { assertReadOnly } from "../../proxy/lib/sql-guard.js";
 
@@ -47,5 +47,14 @@ describe("selectPreset", () => {
         assert.doesNotThrow(() => assertReadOnly(sql, dbType), sql);
       });
     }
+  }
+});
+
+describe("TEST_QUERY", () => {
+  for (const dbType of ["postgres", "mysql", "mssql"]) {
+    test(`${dbType}: passa pelo pré-check do cliente e pelo guard do proxy`, () => {
+      assert.deepEqual(precheckReadOnly(TEST_QUERY), { ok: true });
+      assert.doesNotThrow(() => assertReadOnly(TEST_QUERY, dbType));
+    });
   }
 });

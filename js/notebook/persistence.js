@@ -4,7 +4,7 @@ export const STORAGE_KEY = 'queryit.notebook';
 export const CORRUPT_KEY = 'queryit.notebook.corrupt';
 export const VERSION = 1;
 
-const CELL_TYPES = ['sql', 'js'];
+const CELL_TYPES = ['sql', 'js', 'md'];
 // Até 9 dígitos: o contador continua um inteiro exato e o id não vira "cell_1e+21".
 const ID_PATTERN = /^cell_\d{1,9}$/;
 

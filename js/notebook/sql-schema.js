@@ -19,6 +19,23 @@ export function onSchemaChange(fn) {
   return () => listeners.delete(fn);
 }
 
+// Filtro do sidebar: tabelas cujo "schema.tabela" contém o texto entram inteiras; as outras
+// entram só se alguma coluna bater, com `matchedColumns` dizendo quais (para abrir e destacar).
+export function filterSchemaTables(list, query) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return list.map((t) => ({ ...t, matchedColumns: [] }));
+  const result = [];
+  for (const t of list) {
+    if (`${t.schema}.${t.table}`.toLowerCase().includes(needle)) {
+      result.push({ ...t, matchedColumns: [] });
+      continue;
+    }
+    const matchedColumns = t.columns.filter((c) => c.name.toLowerCase().includes(needle)).map((c) => c.name);
+    if (matchedColumns.length) result.push({ ...t, matchedColumns });
+  }
+  return result;
+}
+
 // O lang-sql trata "." na chave como separador de namespace; nomes com ponto precisam de escape.
 const escapeDots = (name) => name.replaceAll('.', '\\.');
 

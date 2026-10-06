@@ -1,8 +1,12 @@
 import { runSqlCell } from './sql-cell.js';
 import { runJsCell } from './js-cell.js';
-import { createEditor, LANGUAGES } from './editor.js';
-import { h } from '../lib/dom.js';
+import { createEditor, formatSql, LANGUAGES } from './editor.js';
+import { h, show } from '../lib/dom.js';
 import { removeVarsOf } from './kernel-state.js';
+import { render as renderMarkdown } from '../markdown.js';
+import { destroyResult } from './result-view.js';
+import { getSettings } from '../settings.js';
+import { connectionKey, getHistory } from '../history.js';
 
 let counter = 0;
 
@@ -14,6 +18,16 @@ export const RUN_FROM_EVENT = 'run-from';
 
 const RUN_LABEL = '▶ Run';
 const STOP_LABEL = '■ Stop';
+
+// Tipos de célula: sql e js rodam código; md é nota em Markdown (rodar só renderiza).
+const DEFAULT_LANGUAGE = { sql: 'sql', js: 'js', md: 'markdown' };
+const TYPE_LABEL = { sql: 'SQL', js: 'JS', md: 'NOTA' };
+const PLACEHOLDER = {
+  sql: 'SELECT * FROM ...',
+  js: '// use as variáveis das células SQL/JS anteriores, ex: charts.createBarChart(el, minhaTabela.rows, {x:"nome", y:"total"})',
+  md: '# Notas em Markdown: **negrito**, *itálico*, `código`, listas e [links](https://exemplo.com)',
+};
+const HISTORY_LABEL_MAX = 70;
 
 const cellsByElement = new WeakMap();
 
@@ -30,7 +44,8 @@ export function createCell(type, saved = null) {
     id = `cell_${counter}`;
   }
   // hasOwn, não LANGUAGES[x]: "constructor" ou "__proto__" vindos do storage existiriam via protótipo.
-  const language = saved && Object.hasOwn(LANGUAGES, saved.language) ? saved.language : type;
+  const defaultLanguage = DEFAULT_LANGUAGE[type];
+  const language = saved && Object.hasOwn(LANGUAGES, saved.language) ? saved.language : defaultLanguage;
 
   const outputEl = h('div', { className: 'cell-output' });
   const statusEl = h('span', { className: 'cell-status' });
@@ -53,15 +68,23 @@ export function createCell(type, saved = null) {
     Object.entries(LANGUAGES).map(([key, { label }]) => h('option', { value: key, selected: key === language }, label)),
   );
   const sourceEl = h('div', { className: 'cell-source' });
+  const formatBtn =
+    type === 'sql' ? h('button', { type: 'button', className: 'format-btn', title: 'Formatar o SQL no dialeto da conexão' }, 'Formatar') : null;
+  const historySelect =
+    type === 'sql'
+      ? h('select', { className: 'cell-history', title: 'Consultas que deram certo nesta conexão' }, h('option', { value: '' }, 'Histórico…'))
+      : null;
 
   const el = h(
     'div',
-    { className: 'cell' },
+    { className: `cell cell-${type}` },
     h(
       'div',
       { className: 'cell-header' },
-      h('span', { className: 'cell-type' }, type.toUpperCase()),
+      h('span', { className: 'cell-type' }, TYPE_LABEL[type]),
       nameInput ?? h('span', { style: { flex: '1' } }),
+      formatBtn,
+      historySelect,
       languageSelect,
       runBtn,
       runBelowBtn,
@@ -80,14 +103,44 @@ export function createCell(type, saved = null) {
     language,
     doc: saved?.source ?? '',
     onChange: () => el.dispatchEvent(new CustomEvent(CELL_CHANGE_EVENT, { bubbles: true })),
-    placeholderText:
-      type === 'sql'
-        ? 'SELECT * FROM ...'
-        : '// use as variáveis das células SQL/JS anteriores, ex: charts.createBarChart(el, minhaTabela.rows, {x:"nome", y:"total"})',
+    placeholderText: PLACEHOLDER[type],
     onRun: () => runBtn.click(),
   });
 
   languageSelect.addEventListener('change', () => editor.setLanguage(languageSelect.value));
+
+  formatBtn?.addEventListener('click', async () => {
+    try {
+      editor.setValue(await formatSql(editor.getValue(), getSettings().dbType));
+      statusEl.title = '';
+    } catch (err) {
+      statusEl.textContent = 'Não foi possível formatar';
+      statusEl.title = err.message;
+    }
+  });
+
+  // O histórico é por conexão e muda a cada consulta: a lista é montada ao chegar no seletor,
+  // antes de ele abrir. Escolher uma entrada troca o texto do editor.
+  let history = [];
+  async function loadHistory() {
+    history = getHistory(await connectionKey(getSettings()));
+    show(
+      historySelect,
+      h('option', { value: '' }, history.length ? 'Histórico…' : 'Histórico (vazio)'),
+      history.map((sql, i) => {
+        const oneLine = sql.replace(/\s+/g, ' ');
+        const label = oneLine.length > HISTORY_LABEL_MAX ? `${oneLine.slice(0, HISTORY_LABEL_MAX)}…` : oneLine;
+        return h('option', { value: String(i), title: sql }, label);
+      }),
+    );
+  }
+  historySelect?.addEventListener('mouseenter', () => loadHistory().catch(() => {}));
+  historySelect?.addEventListener('focus', () => loadHistory().catch(() => {}));
+  historySelect?.addEventListener('change', () => {
+    const sql = history[Number(historySelect.value)];
+    historySelect.value = '';
+    if (sql !== undefined) editor.setValue(sql);
+  });
 
   // Uma execução por vez. Só a SQL pode ser interrompida: JS roda no próprio navegador e não
   // tem como parar código já em andamento, então o botão fica desabilitado até ela terminar.
@@ -108,9 +161,11 @@ export function createCell(type, saved = null) {
     if (type === 'sql') runBtn.textContent = STOP_LABEL;
     else runBtn.disabled = true;
     try {
-      return type === 'sql'
-        ? await runSqlCell({ sql: editor.getValue(), outputEl, statusEl, nameInput, id, signal: controller.signal })
-        : await runJsCell({ code: editor.getValue(), outputEl, statusEl, id });
+      if (type === 'sql') {
+        return await runSqlCell({ sql: editor.getValue(), outputEl, statusEl, nameInput, id, signal: controller.signal });
+      }
+      if (type === 'md') return renderNote();
+      return await runJsCell({ code: editor.getValue(), outputEl, statusEl, id });
     } finally {
       controller = null;
       runBtn.textContent = RUN_LABEL;
@@ -120,6 +175,12 @@ export function createCell(type, saved = null) {
 
   function stop() {
     controller?.abort();
+  }
+
+  // Nota: "rodar" é só renderizar o Markdown (sempre dá certo, então não para o "Rodar tudo").
+  function renderNote() {
+    show(outputEl, h('div', { className: 'markdown' }, renderMarkdown(editor.getValue())));
+    return true;
   }
 
   runBtn.addEventListener('click', () => {
@@ -144,6 +205,7 @@ export function createCell(type, saved = null) {
 
   removeBtn.addEventListener('click', () => {
     stop();
+    destroyResult(outputEl);
     editor.destroy();
     el.remove();
     // A variável sai junto, senão células JS seguiriam lendo um resultado de célula que não existe mais.
@@ -151,7 +213,9 @@ export function createCell(type, saved = null) {
   });
 
   // Célula restaurada não roda sozinha: isso consultaria o banco sem o usuário pedir.
-  if (saved) statusEl.textContent = 'Não executada';
+  // Nota não tem efeito colateral, então já volta renderizada.
+  if (saved && type === 'md') renderNote();
+  else if (saved) statusEl.textContent = 'Não executada';
 
   const serialize = () => ({
     id,

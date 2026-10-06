@@ -2,6 +2,9 @@ import { precheckReadOnly } from '../sql-guard.js';
 import { runQuery, missingSetting, ProxyError } from '../lib/api.js';
 import { h, show } from '../lib/dom.js';
 import { replaceVarsOf, toVarName } from './kernel-state.js';
+import { renderResult, destroyResult } from './result-view.js';
+import { getSettings } from '../settings.js';
+import { addToHistory, connectionKey } from '../history.js';
 
 const MISSING_MESSAGES = {
   connectionString: 'Configure a connection string em Configurações.',
@@ -11,6 +14,8 @@ const MISSING_MESSAGES = {
 // Resolve com true se a consulta deu certo; "Rodar tudo" para na primeira célula que der false.
 // `signal` cancela o fetch, e o proxy então cancela a consulta no banco.
 export async function runSqlCell({ sql, outputEl, statusEl, nameInput, id, signal }) {
+  // A saída anterior vai ser trocada (resultado novo ou erro): solta o gráfico dela antes.
+  destroyResult(outputEl);
   const check = precheckReadOnly(sql);
   if (!check.ok) {
     statusEl.textContent = 'Bloqueado';
@@ -18,7 +23,10 @@ export async function runSqlCell({ sql, outputEl, statusEl, nameInput, id, signa
     return false;
   }
 
-  const missing = missingSetting();
+  // Lidas uma vez: trocar de conexão durante a consulta não muda para onde ela foi
+  // nem em qual histórico ela entra.
+  const settings = getSettings();
+  const missing = missingSetting(settings);
   if (missing) {
     showError(outputEl, MISSING_MESSAGES[missing]);
     return false;
@@ -28,15 +36,17 @@ export async function runSqlCell({ sql, outputEl, statusEl, nameInput, id, signa
   const started = performance.now();
 
   try {
-    const data = await runQuery(sql, { signal });
+    const data = await runQuery(sql, { settings, signal });
     const elapsed = Math.round(performance.now() - started);
+    const varName = toVarName(nameInput?.value || id);
 
     statusEl.textContent = `${data.rowCount} linha(s) em ${data.elapsedMs ?? elapsed}ms${data.truncated ? ' (truncado)' : ''}`;
-    renderTable(outputEl, data.columns, data.rows);
+    renderResult(outputEl, { columns: data.columns, rows: data.rows, name: varName });
+    recordHistory(settings, sql);
 
     // Dona da variável é a célula: renomear e rodar de novo não deixa o nome antigo no kernel.
     // Célula já removida não grava: ninguém mais removeria a variável.
-    if (outputEl.isConnected) replaceVarsOf(id, [[toVarName(nameInput?.value || id), {
+    if (outputEl.isConnected) replaceVarsOf(id, [[varName, {
       columns: data.columns,
       rows: data.rows.map((row) => toObjectRow(data.columns, row)),
     }]]);
@@ -54,6 +64,14 @@ export async function runSqlCell({ sql, outputEl, statusEl, nameInput, id, signa
   }
 }
 
+// Em segundo plano e sem erro visível: crypto.subtle só existe em origem segura (https ou
+// localhost), e o histórico é conveniência; falhar nele não pode marcar a consulta como erro.
+function recordHistory(settings, sql) {
+  connectionKey(settings)
+    .then((key) => addToHistory(key, sql))
+    .catch(() => {});
+}
+
 function showError(outputEl, message) {
   show(outputEl, h('div', { className: 'error' }, message));
 }
@@ -64,26 +82,4 @@ function toObjectRow(columns, row) {
     obj[c] = row[i];
   });
   return obj;
-}
-
-function renderTable(container, columns, rows) {
-  if (!rows.length) {
-    show(container, h('div', { className: 'empty' }, 'Sem resultados.'));
-    return;
-  }
-  show(
-    container,
-    h(
-      'table',
-      {},
-      h('thead', {}, h('tr', {}, columns.map((c) => h('th', {}, c)))),
-      h('tbody', {}, rows.map((row) => h('tr', {}, row.map((v) => h('td', {}, formatCell(v)))))),
-    ),
-  );
-}
-
-function formatCell(v) {
-  if (v === null || v === undefined) return 'NULL';
-  if (typeof v === 'object') return JSON.stringify(v);
-  return String(v);
 }

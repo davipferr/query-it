@@ -1,5 +1,8 @@
 // SQL que o próprio app gera (schema explorer). Sem dependência de DOM, testável no Node.
 
+// Botão "Testar conexão" das Configurações: o menor SELECT aceito pelos três dialetos.
+export const TEST_QUERY = 'select 1';
+
 // Lista tabelas e colunas para a árvore do schema explorer.
 export const INTROSPECTION = {
   postgres: `

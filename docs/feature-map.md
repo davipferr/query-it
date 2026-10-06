@@ -14,23 +14,27 @@ UI text is in Portuguese; bug reports usually quote it. The messages below are l
 
 Seed data: `customers` (4 rows; id 3 has a `null` email), `orders` (4 rows), `order items` (3 rows; name with a space), sequence `order_seq` (Postgres only).
 
-Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.stringify({ dbType, connectionString, proxyUrl }))`, then reload. Remove the key afterwards.
+Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.stringify({ dbType, connectionString, proxyUrl }))`, then reload (the old single-connection format still loads; it becomes the connection "Padrão"). Remove the key afterwards.
 
 ---
 
-## 1. Settings modal
+## 1. Settings and connections
 
 | | |
 |---|---|
-| Files | `js/settings.js`, markup in `index.html` |
-| Open / close | `#open-settings` opens `#settings-modal` (by removing class `hidden`). `#close-settings` cancels. Submitting `#settings-form` saves. |
-| Fields | `#setting-db-type` (`postgres` \| `mysql` \| `mssql`), `#setting-connection-string` (password input), `#setting-proxy-url` |
-| State | `localStorage['queryit.settings']` = `{ dbType, connectionString, proxyUrl }`. `getSettings()` merges it over the defaults. |
+| Files | `js/settings.js` (storage, modal, switcher), `js/connections.js` (pure model: migrate, validate, add/remove/activate), `js/sql-preset.js` (`TEST_QUERY`), markup in `index.html` |
+| Open / close | `#open-settings` opens `#settings-modal` (by removing class `hidden`). `#close-settings` cancels (discards every change made in the modal). Submitting `#settings-form` saves. |
+| Connections | `#setting-connection` picks which saved connection the form edits; `#new-connection` "Nova" adds one ("Nova conexão"); `#delete-connection` "Excluir" removes the one being edited (disabled when it's the last). Changes stay in a draft until Salvar; Salvar also makes the edited connection the **active** one. |
+| Fields | `#setting-connection-name`, `#setting-db-type` (`postgres` \| `mysql` \| `mssql`), `#setting-connection-string` (password input), `#setting-proxy-url` (one proxy for all connections) |
+| Test | `#test-connection` "Testar conexão" runs `TEST_QUERY` (`select 1`) with the values **in the form**, saved or not. Result in `#test-connection-result`: "Testando…" · "Conexão OK (Xms)" (`.hint.ok`) · the proxy's error · "Proxy inacessível: …" (network error) · "Preencha a connection string e o Proxy URL." (all errors `.hint.error`). |
+| Switcher | `#connection-switcher` in the top bar lists the saved connections by name and switches the active one immediately. |
+| State | `localStorage['queryit.settings']` = `{ proxyUrl, activeId, connections: [{ id: 'conn_N', name, dbType, connectionString }] }`. `normalizeSettings()` validates it (drops repeated ids, fills missing fields, unknown `activeId` → the first) and always returns at least one connection. `getSettings()` returns the **active** connection flattened: `{ dbType, connectionString, proxyUrl, connectionName, activeId, connections }`, so callers that only query don't care that there are several. |
+| Changing connection | Saving or switching to a different `dbType`/`connectionString` calls `resetSchemaExplorer()` (§2): the schema tree and autocomplete are cleared, and every open SQL editor reloads its highlighting with the new dialect. |
 | Defaults | `dbType: 'postgres'`. `proxyUrl` is `http://localhost:3000/api/query` when the page is on `localhost`/`127.0.0.1`, otherwise empty. |
-| Auto-open | `js/app.js` opens the modal on load when `connectionString` is empty. |
+| Auto-open | `js/app.js` opens the modal on load when the active connection's `connectionString` is empty. |
 
-**Exercise:** open, fill in the fields, Salvar, reload, reopen. The values must persist.
-**Failure modes:** corrupt JSON in storage falls back to the defaults silently. Changing `dbType` doesn't re-highlight open SQL editors; the dialect is read when an editor loads SQL highlighting.
+**Exercise:** open, fill in the fields, Testar conexão ("Conexão OK"), Salvar, reload, reopen: values persist. Nova → name "Segunda", change the type, Salvar: the switcher lists both, and the second is active. Switch back in `#connection-switcher`: the schema tree shows "Conexão trocada…".
+**Failure modes:** corrupt JSON in storage falls back to the defaults silently.
 
 ## 2. Schema explorer (sidebar)
 
@@ -42,9 +46,11 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | Request | `POST proxyUrl` with `{ dbType, connectionString, sql }`, where `sql` is the `INTROSPECTION[dbType]` query against `information_schema.columns` |
 | SELECT button | `selectPreset(dbType, schema, table)` builds the SQL, then `insertSqlPreset` (§3) adds a new SQL cell with it. Names are always quoted for the dialect: Postgres `SELECT * FROM "public"."order items" LIMIT 100`, MySQL with backticks, SQL Server `SELECT TOP 100 * FROM [dbo].[order items]` (double quotes when the name contains `]`, because the proxy's parser rejects `]]`). |
 | Autocomplete | After a load, the tables go to `setSchemaTables()` in `js/notebook/sql-schema.js`; every SQL editor (open or new) reloads its language with that schema (§3). |
+| Filter | `#schema-filter` filters the loaded tree as you type, without querying again (`filterSchemaTables` in `sql-schema.js`). A table whose `schema.table` contains the text shows in full; otherwise it shows if a column matches, already expanded, with the matching columns as `li.match`. |
+| Reset | `resetSchemaExplorer(container)`, called when the active connection changes (§1): clears the loaded tables and `setSchemaTables([])`, which makes open SQL editors reload with the new dialect. A load still in flight when the connection changes (or when another load starts) is discarded. |
 
-**Exercise:** load with the seed data. Expect `public.customers`, `public.order items`, `public.orders`. Expand one; the columns and types are listed. Click SELECT on `order items`, then run the new cell: `3 linha(s)`.
-**Messages:** "Configure a conexão em Configurações primeiro." (no connection or proxy URL) · "Carregando schema…" · "Nenhuma tabela encontrada." · any proxy error, shown as text in `.hint.error`.
+**Exercise:** load with the seed data. Expect `public.customers`, `public.order items`, `public.orders`. Expand one; the columns and types are listed. Click SELECT on `order items`, then run the new cell: `3 linha(s)`. Type `email` in `#schema-filter`: only `public.customers`, open, with `email` highlighted.
+**Messages:** "Configure a conexão em Configurações primeiro." (no connection or proxy URL) · "Carregando schema…" · "Nenhuma tabela encontrada." · "Nenhuma tabela ou coluna corresponde ao filtro." · "Conexão trocada. Clique em \"Carregar\" para ver o schema." · any proxy error, shown as text in `.hint.error`.
 **Invariant:** names, types and errors come from the database. Only ever add them as text.
 
 ## 3. Notebook cells (shared shell)
@@ -52,8 +58,8 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | | |
 |---|---|
 | Files | `js/notebook/cell.js` (shell), `js/notebook/editor.js` (CodeMirror), `js/notebook/runner.js` (batch runs), `js/app.js` (buttons) |
-| Add | `#add-sql-cell`, `#add-js-cell`. Cells are appended to `#cells`. |
-| Cell DOM | `.cell` > `.cell-header` (`.cell-type`, `.cell-name` SQL only, `.cell-language` select, `.run-btn` "▶ Run", `.run-below-btn` "▶↓", `.cell-status`, `.move-up-btn` "▲", `.move-down-btn` "▼", `.remove-btn` "✕") + `.cell-source` (editor) + `.cell-output` |
+| Add | `#add-sql-cell`, `#add-js-cell`, `#add-md-cell` "+ Nota" (§10). Cells are appended to `#cells`. |
+| Cell DOM | `.cell.cell-<type>` (`sql` \| `js` \| `md`) > `.cell-header` (`.cell-type` "SQL" / "JS" / "NOTA", `.cell-name` SQL only, `.format-btn` "Formatar" and `.cell-history` select SQL only (§4), `.cell-language` select, `.run-btn` "▶ Run", `.run-below-btn` "▶↓", `.cell-status`, `.move-up-btn` "▲", `.move-down-btn` "▼", `.remove-btn` "✕") + `.cell-source` (editor) + `.cell-output` |
 | Run | `.run-btn`, or Ctrl/Cmd+Enter in the editor (`Mod-Enter`, highest precedence). One run per cell at a time: while a SQL cell runs, `.run-btn` reads "■ Stop" and clicking it cancels the query (§4); while a JS cell runs, `.run-btn` is `disabled` (running JS can't be interrupted). `cell.run()` resolves `true`/`false` (success); `cell.stop()` cancels. |
 | Run all / from here | `#run-all` "▶▶ Rodar tudo" runs every cell in DOM order; `.run-below-btn` runs from that cell to the end (it dispatches the bubbling `run-from` event, handled in `app.js`). One cell at a time, and the batch **stops at the first cell that fails** (blocked, error, cancelled, missing settings). While a batch runs, `#run-all` reads "■ Parar": it cancels the current SQL query, doesn't start the next cell and releases the batch right away (a running JS cell can't be stopped; it finishes on its own, with its `.run-btn` disabled until then). Only one batch at a time; starting another is ignored. The cell list is fixed when the batch starts. A batch that reaches a cell already running on its own waits for that run and uses its result (`cell.run()` returns the run in progress). A cell removed while it runs never writes its variables. |
 | Ids | `cell_1`, `cell_2`… from a module counter. The counter never resets, so ids keep counting up after a removal. Restored cells keep their saved id, and the counter starts after the highest one (§9). |
@@ -68,10 +74,13 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 
 | | |
 |---|---|
-| Files | `js/notebook/sql-cell.js`, `js/sql-guard.js` (client pre-check), `js/lib/api.js` (request) |
-| Flow | client pre-check, then settings check, then `POST proxyUrl`, then render the table, then `replaceVarsOf(cellId, [[name, { columns, rows }]])` (only on success) |
-| Variable name | `.cell-name` input (default: the cell id). Sanitized to a JS identifier by `toVarName` (invalid characters become `_`, a leading digit gets a `_` prefix). Renaming and rerunning removes the old name. |
-| Output | `.cell-output table` with `thead th` / `tbody td`; `null` is shown as `NULL`, objects as JSON |
+| Files | `js/notebook/sql-cell.js`, `js/sql-guard.js` (client pre-check), `js/lib/api.js` (request), `js/notebook/result-view.js` (output, §11), `js/history.js` (history), `formatSql` in `js/notebook/editor.js` |
+| Flow | client pre-check, then settings check (settings read **once**, at the start), then `POST proxyUrl`, then render the result, then add the SQL to the history, then `replaceVarsOf(cellId, [[name, { columns, rows }]])` (only on success) |
+| Variable name | `.cell-name` input (default: the cell id). Sanitized to a JS identifier by `toVarName` (invalid characters become `_`, a leading digit gets a `_` prefix). Renaming and rerunning removes the old name. Also the file name of exports (§11). |
+| Output | `renderResult` (§11): toolbar + `.result-table table` with `thead th.sortable` / `tbody td`; `null` is shown as `NULL` (`td.null`), objects as JSON |
+| Pre-check | `js/sql-guard.js` removes comments and blanks out strings and quoted names (`'…'`, `"…"`, `` `…` ``, `[…]`, with doubled-quote escapes) before checking, so `where status = 'delete'` or `select 1 -- drop` pass and `select 'a'; delete …` is still refused. UX only; the proxy guard decides. |
+| Format | `.format-btn` "Formatar" formats the editor text with `sql-formatter` (esm.sh, pinned in the import map, loaded on first use) in the active connection's dialect (`postgresql` / `mysql` / `transactsql`). If it can't parse the SQL, the status reads "Não foi possível formatar" and the reason is in the status `title`; the text is untouched. |
+| History | Every successful query is saved in `localStorage['queryit.history']` = `{ [key]: [sql, …] }`, newest first, no duplicates, 50 per connection, 20 connections (least recently used dropped). `key` is a SHA-256 of `dbType` + connection string, so the password isn't copied into another key. `.cell-history` "Histórico…" lists the active connection's history (built when the pointer enters or it gets focus; "Histórico (vazio)" when empty); picking one replaces the editor text. Saving never makes the query fail (needs `crypto.subtle`, i.e. https or localhost). |
 | Status | `"N linha(s) em Xms"`, plus `" (truncado)"` at the 1000-row cap · `Executando…` · `Erro (Xms)` · `Bloqueado` · `Erro de rede` · `Cancelada (Xms)` |
 | Cancel | "■ Stop" on `.run-btn` (or `#run-all` during a batch) aborts the `fetch` (`AbortController`, `signal` passed to `runQuery`). The proxy sees the connection close and cancels the query **inside the database** (§7). Output: "Consulta cancelada." |
 
@@ -79,7 +88,7 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 **Messages (client pre-check, `js/sql-guard.js`):** "Escreva uma consulta antes de rodar." · "Apenas um comando por célula é permitido." · "Somente consultas de leitura (SELECT) são permitidas." · "A consulta deve começar com SELECT ou WITH."
 **Messages (settings):** "Configure a connection string em Configurações." · "Configure o Proxy URL em Configurações." (the status isn't updated in these two cases)
 **Messages (proxy):** see §7.
-**Known bugs:** the client pre-check refuses forbidden words inside string literals (`where status = 'delete'`); this is the todo test in `test/js/sql-guard.test.js`.
+**Messages (format):** "Não foi possível formatar".
 
 ## 5. JS cell and kernel state
 
@@ -157,6 +166,34 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 **Exercise (two tabs):** open the app in two tabs, edit a cell in tab A, then check that tab B shows `#notebook-conflict` and that editing in B doesn't change `queryit.notebook`. Click `#notebook-keep` in B: storage gets B's version and A shows the warning.
 **Messages:** "O notebook salvo não pôde ser lido; uma cópia ficou em queryit.notebook.corrupt." · "Algumas células salvas não puderam ser lidas; uma cópia do notebook ficou em queryit.notebook.corrupt." (the key named is the one actually used) · "O notebook salvo não pôde ser lido por inteiro e a cópia falhou; esta aba não vai salvar para não apagá-lo." · "Não foi possível salvar o notebook neste navegador." · "O notebook foi alterado em outra aba; esta aba parou de salvar." (buttons "Recarregar", "Manter esta versão")
 
+## 10. Notes (Markdown cells)
+
+| | |
+|---|---|
+| Files | `js/markdown.js` (parser + renderer), `js/notebook/cell.js` (type `md`) |
+| Add | `#add-md-cell` "+ Nota". Header label "NOTA"; highlighting defaults to Markdown. |
+| Run | `.run-btn` renders the text into `.cell-output .markdown`. Always succeeds, so "Rodar tudo" passes through notes. A restored note renders right away (no side effects); other restored cells stay "Não executada". |
+| Syntax | Blocks: `#`…`######` headings, paragraphs, `-`/`*`/`+` and `1.` lists, `>` quotes, fenced ``` code, `---` rule. Inline: `` `code` ``, `**bold**` / `__bold__`, `*italic*` / `_italic_`, `[text](url)`. Underscores inside a word (`order_items_total`) stay literal. |
+| Safety | `parse()` builds a tree and `render()` builds it with `h()`: HTML in the text stays text. Links only for `http:`, `https:`, `mailto:` (`safeHref`); any other scheme (`javascript:`, `data:`, relative) renders as plain text. Links open with `target="_blank" rel="noopener noreferrer"`. |
+| Tests | `test/js/markdown.test.js` |
+
+**Exercise:** "+ Nota", type `# Título` and `[x](javascript:alert(1))`, Run: an `<h1>`, and the link shows as plain text.
+
+## 11. Result table (SQL cell output)
+
+| | |
+|---|---|
+| Files | `js/notebook/result-view.js` (DOM), `js/result-data.js` (pure: format, filter, sort, CSV/TSV/JSON, numeric columns) |
+| Toolbar | `.result-toolbar` > `.result-filter`, `.result-count` ("N linha(s)" or "N de M linha(s)"), `.export-csv-btn` "CSV", `.export-json-btn` "JSON", `.copy-btn` "Copiar", `.wrap-toggle` "Quebrar texto", `.quick-chart-btn` "Gráfico", `.result-message` |
+| Filter | `.result-filter` keeps rows where any column's displayed text contains the input (case-insensitive). |
+| Sort | Clicking a `th.sortable` cycles ascending ▲ → descending ▼ → original order. Numbers sort as numbers, including numeric text (Postgres `bigint`/`numeric` arrive as strings, e.g. `"-5.20"`); other text in `pt-BR` with numeric collation; `NULL` always last. |
+| Export / copy | CSV, JSON and Copiar use **the rows on screen** (filtered and sorted). CSV is RFC 4180 (CRLF, doubled quotes, `NULL` → empty); JSON is a list of objects; Copiar puts TSV on the clipboard for spreadsheets ("Copiado: N linha(s)." · "Não foi possível copiar: …"). Files download as `<variable name>.csv/.json` from a local Blob (released after 10s); the CSV starts with a UTF-8 BOM so Excel keeps accents. Text starting with `=`, `+`, `-`, `@`, tab or CR gets a leading `'` in CSV/TSV, so a value from the database can't run as a spreadsheet formula; numbers, including numeric text such as `"-5.20"`, are untouched. |
+| Wrap | Cells are cut at 28rem with an ellipsis, and the full value is in the cell's `title`; `.wrap-toggle` (`.active`) shows the whole text. `NULL` cells are `td.null`. |
+| Quick chart | `.quick-chart-btn` opens `.quick-chart` with `.chart-type` (Barras / Linha / Pizza), `.chart-x` (any column) and `.chart-y` (numeric columns only, including numeric text such as Postgres `numeric`), drawn in `.chart-area` with `js/charts.js` from the rows on screen. Redraws on filter and sort. Message: "Nenhuma coluna numérica para o eixo Y." The Chart.js instance is destroyed (`destroyResult`) when the panel closes, the cell reruns, or the cell is removed, since Chart.js keeps every chart in a global registry. |
+| Tests | `test/js/result-data.test.js` |
+
+**Exercise:** `select * from orders`: filter `paid` → "2 de 4 linha(s)"; click `total` twice → descending; CSV downloads `cell_1.csv`; Gráfico with X `status`, Y `total` draws a `<canvas>`.
+
 ---
 
 ## Source file index
@@ -165,10 +202,15 @@ Every source file and the section that covers it (`npm run lint` checks this lis
 
 | File | § |
 |---|---|
-| `index.html` | 1–6, 9 |
+| `index.html` | 1–6, 9–11 |
 | `server.js` | 8 |
 | `js/app.js` | 3, 9 |
 | `js/settings.js` | 1 |
+| `js/connections.js` | 1 |
+| `js/history.js` | 4 |
+| `js/markdown.js` | 10 |
+| `js/result-data.js` | 11 |
+| `js/notebook/result-view.js` | 11 |
 | `js/schema-explorer.js` | 2 |
 | `js/sql-guard.js` | 4 |
 | `js/sql-preset.js` | 2 |

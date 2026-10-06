@@ -60,8 +60,13 @@ test("versão desconhecida é recusada e guardada no backup", () => {
   assert.equal(storage.data[CORRUPT_KEY], raw);
 });
 
+test("nota (md) é salva e restaurada como as outras células", () => {
+  const raw = JSON.stringify({ version: 1, cells: [{ id: "cell_4", type: "md", language: "markdown", source: "# Notas" }] });
+  assert.deepEqual(parse(raw).cells, [{ id: "cell_4", type: "md", language: "markdown", source: "# Notas" }]);
+});
+
 test("célula descartada faz backup do notebook inteiro antes de ser perdida", () => {
-  const raw = JSON.stringify({ version: 1, cells: [...CELLS, { id: "cell_9", type: "markdown", source: "# notas" }] });
+  const raw = JSON.stringify({ version: 1, cells: [...CELLS, { id: "cell_9", type: "python", source: "print(1)" }] });
   const storage = memoryStorage({ [STORAGE_KEY]: raw });
   const result = loadNotebook(storage);
   assert.equal(result.problem, "partial");
