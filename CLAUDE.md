@@ -63,10 +63,16 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 | App wiring | `js/app.js` |
 | DOM building (only way) | `js/lib/dom.js` |
 | Proxy requests (only `fetch`) | `js/lib/api.js` |
-| SQL the app generates (introspection, SELECT button) | `js/sql-preset.js` |
-| Settings modal (`localStorage` key `queryit.settings`) | `js/settings.js` |
-| Schema explorer | `js/schema-explorer.js` |
-| Cells (shell, editor, SQL, JS) | `js/notebook/cell.js`, `editor.js`, `sql-cell.js`, `js-cell.js` |
+| SQL the app generates (introspection, SELECT button, connection test) | `js/sql-preset.js` |
+| Settings modal and connection switcher (`localStorage` key `queryit.settings`) | `js/settings.js` |
+| Saved connections model (migration, validation, active connection) | `js/connections.js` |
+| Query history per connection (`localStorage` key `queryit.history`) | `js/history.js` |
+| Schema explorer (tree, filter) | `js/schema-explorer.js` |
+| Cells (shell, editor, SQL, JS, notes) | `js/notebook/cell.js`, `editor.js`, `sql-cell.js`, `js-cell.js` |
+| Run all / run from here | `js/notebook/runner.js` |
+| Notebook saved in the browser (`localStorage` key `queryit.notebook`) | `js/notebook/persistence.js` |
+| SQL result table (filter, sort, export, quick chart) | `js/notebook/result-view.js`, `js/result-data.js` |
+| Markdown notes (parsed to a tree, built with `h()`) | `js/markdown.js` |
 | Shared variables between cells | `js/notebook/kernel-state.js` |
 | Charts and tables for JS cells | `js/charts.js` |
 | Proxy handler | `proxy/api/query.js` |
