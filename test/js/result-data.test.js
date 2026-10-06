@@ -7,7 +7,7 @@ import {
   sortRows,
   nextSort,
   toCsv,
-  toTsv,
+  toMarkdownTable,
   toJson,
   numericColumns,
 } from "../../js/result-data.js";
@@ -57,12 +57,35 @@ test("CSV cita vírgula, aspas e quebra de linha; NULL vira vazio", () => {
   assert.equal(csv, 'a,b\r\n"x,y","diz ""oi"""\r\n"linha\nnova",\r\n');
 });
 
-test("CSV e TSV neutralizam fórmula de planilha em texto, mas não em número", () => {
+test("CSV neutraliza fórmula de planilha em texto, mas não em número", () => {
   const rows = [["=HYPERLINK(\"http://x\")", -5, "+cmd|' /C calc'!A0", "@SUM(A1)", "-2+3"]];
   const csv = toCsv(["a", "b", "c", "d", "e"], rows).split("\r\n")[1];
   assert.equal(csv, `"'=HYPERLINK(""http://x"")",-5,'+cmd|' /C calc'!A0,'@SUM(A1),'-2+3`);
-  const tsv = toTsv(["a", "b", "c", "d", "e"], rows).split("\n")[1];
-  assert.equal(tsv, `'=HYPERLINK("http://x")\t-5\t'+cmd|' /C calc'!A0\t'@SUM(A1)\t'-2+3`);
+});
+
+test("tabela Markdown: cabeçalho, separador e numéricas alinhadas à direita", () => {
+  assert.equal(
+    toMarkdownTable(COLUMNS, ROWS.slice(0, 2)),
+    ["| id | name | total |", "| ---: | --- | ---: |", "| 1 | Ana | 120.50 |", "| 2 | bruno | NULL |"].join("\n"),
+  );
+});
+
+test("tabela Markdown escapa o que quebraria a tabela ou viraria formatação", () => {
+  const md = toMarkdownTable(["col|x"], [["a|b"], ["**negrito** _it_ `code`"], ["<script>x</script>"], ["[l](javascript:x)"], ["linha1\nlinha2"], ["c:\\dir ~x~"]]);
+  assert.deepEqual(md.split("\n"), [
+    "| col\\|x |",
+    "| --- |",
+    "| a\\|b |",
+    "| \\*\\*negrito\\*\\* \\_it\\_ \\`code\\` |",
+    "| \\<script\\>x\\</script\\> |",
+    "| \\[l\\](javascript:x) |",
+    "| linha1 linha2 |",
+    "| c:\\\\dir \\~x\\~ |",
+  ]);
+});
+
+test("tabela Markdown sem linhas tem só cabeçalho e separador", () => {
+  assert.equal(toMarkdownTable(["a"], []), "| a |\n| --- |");
 });
 
 test("número em texto (bigint/numeric do Postgres) não recebe o prefixo de fórmula", () => {
@@ -74,10 +97,6 @@ test("número em texto (bigint/numeric do Postgres) não recebe o prefixo de fó
 test("número em texto ordena como número", () => {
   const rows = [["-5"], ["3"], ["-10"], ["1.10"], ["1.9"]];
   assert.deepEqual(sortRows(rows, 0, "asc").map((r) => r[0]), ["-10", "-5", "1.10", "1.9", "3"]);
-});
-
-test("TSV troca tab e quebra de linha dentro do valor por espaço", () => {
-  assert.equal(toTsv(["a"], [["x\ty\nz"]]), "a\nx y z");
 });
 
 test("JSON vira lista de objetos com null explícito", () => {

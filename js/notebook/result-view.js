@@ -1,5 +1,5 @@
 // Saída de uma célula SQL: tabela com filtro, ordenação por coluna, exportação (CSV/JSON),
-// cópia para planilha e um gráfico rápido. Valores e nomes vêm do banco: só h()/show().
+// cópia como tabela Markdown e um gráfico rápido. Valores e nomes vêm do banco: só h()/show().
 import { h, show } from '../lib/dom.js';
 import * as charts from '../charts.js';
 import {
@@ -8,7 +8,7 @@ import {
   sortRows,
   nextSort,
   toCsv,
-  toTsv,
+  toMarkdownTable,
   toJson,
   numericColumns,
 } from '../result-data.js';
@@ -89,8 +89,8 @@ export function renderResult(container, { columns, rows, name }) {
   async function copy() {
     const current = view();
     try {
-      await navigator.clipboard.writeText(toTsv(columns, current));
-      say(`Copiado: ${current.length} linha(s).`);
+      await navigator.clipboard.writeText(toMarkdownTable(columns, current));
+      say(`Copiado como tabela Markdown: ${current.length} linha(s).`);
     } catch (err) {
       say(`Não foi possível copiar: ${err.message}`);
     }
@@ -205,7 +205,7 @@ export function renderResult(container, { columns, rows, name }) {
       countEl,
       h('button', { type: 'button', className: 'export-csv-btn', title: 'Baixar as linhas visíveis em CSV', onClick: () => download('csv', 'text/csv;charset=utf-8', `${UTF8_BOM}${toCsv(columns, view())}`) }, 'CSV'),
       h('button', { type: 'button', className: 'export-json-btn', title: 'Baixar as linhas visíveis em JSON', onClick: () => download('json', 'application/json', toJson(columns, view())) }, 'JSON'),
-      h('button', { type: 'button', className: 'copy-btn', title: 'Copiar as linhas visíveis para colar numa planilha', onClick: copy }, 'Copiar'),
+      h('button', { type: 'button', className: 'copy-btn', title: 'Copiar as linhas visíveis como tabela Markdown', onClick: copy }, 'Copiar'),
       wrapBtn,
       chartBtn,
       messageEl,

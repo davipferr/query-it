@@ -50,7 +50,7 @@ export function nextSort(current, colIndex) {
 }
 
 // Planilhas executam como fórmula uma célula que começa com = + - @ (ou tab/CR); como os
-// valores vêm do banco, quem controla um dado poderia rodar algo no Excel de quem exporta.
+// valores vêm do banco, quem controla um dado poderia rodar algo no Excel de quem abre o CSV.
 // Número (inclusive em texto, como "-5.20") não recebe o prefixo ': continua número na planilha.
 function neutralizeFormula(v) {
   return typeof v === 'string' && /^[=+\-@\t\r]/.test(v) && !NUMERIC_TEXT.test(v) ? `'${v}` : v;
@@ -67,11 +67,24 @@ export function toCsv(columns, rows) {
   return [columns, ...rows].map((row) => row.map(csvField).join(',')).join('\r\n') + '\r\n';
 }
 
-// TSV para colar em planilha: tab e quebra de linha dentro do valor viram espaço.
-export function toTsv(columns, rows) {
-  const field = (v) =>
-    v === null || v === undefined ? '' : formatValue(neutralizeFormula(v)).replace(/[\t\r\n]+/g, ' ');
-  return [columns, ...rows].map((row) => row.map(field).join('\t')).join('\n');
+// Texto literal numa célula de tabela Markdown: os valores vêm do banco, então `|` não pode
+// quebrar a tabela e * _ ` [ ] < > ~ \ não podem virar formatação, link ou HTML onde for colado.
+// Quebra de linha dentro do valor vira espaço (a tabela é uma linha por registro).
+function markdownCell(v) {
+  return formatValue(v)
+    .replace(/[\\`*_[\]<>|~]/g, '\\$&')
+    .replace(/[\r\n]+/g, ' ');
+}
+
+// Tabela Markdown (GFM) para colar em issue, PR, wiki ou chat. Colunas numéricas alinhadas à direita.
+export function toMarkdownTable(columns, rows) {
+  const numeric = new Set(numericColumns(columns, rows));
+  const line = (cells) => `| ${cells.join(' | ')} |`;
+  return [
+    line(columns.map(markdownCell)),
+    line(columns.map((c) => (numeric.has(c) ? '---:' : '---'))),
+    ...rows.map((row) => line(row.map(markdownCell))),
+  ].join('\n');
 }
 
 // JSON como lista de objetos (o mesmo formato de `rows` nas células JS).
