@@ -86,7 +86,8 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 
 - **DNS rebinding:** the SSRF guard resolves the host, then the driver resolves it again. Only matters with `ALLOW_PRIVATE_HOSTS=false`, i.e. a public deploy.
 - **MySQL:** an explicit `LIMIT` larger than 1000 overrides `sql_select_limit`. The rows are trimmed afterwards, but the server still sends them all.
-- **MySQL and SQL Server drivers** have only been tested through unit tests until someone runs `npm run db:up:all`.
+- **MySQL and SQL Server drivers** have only been tested through unit tests until someone runs `npm run db:up:all`. That includes their query cancel (`KILL QUERY`, `request.cancel()`); only the Postgres cancel has run against a real database.
+- **A late cancel can hit a recycled session id.** Postgres and MySQL cancel from a second connection (`pg_cancel_backend(pid)`, `KILL QUERY threadId`), which can take up to 8s to connect. If the original session has closed and the database reused its pid / thread id meanwhile, the cancel stops a query of another session of the same database user. It only cancels a query, never closes a connection.
 
 ## Skills and agents (`.claude/`)
 
