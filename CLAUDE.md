@@ -13,7 +13,7 @@ Browser notebook for querying databases: SQL cells run through a local proxy, JS
 
 | Task | Command |
 |---|---|
-| Run both servers | `npm run dev` |
+| Run both servers in Docker (`docker-compose.yml`) | `npm run dev` |
 | Frontend only / proxy only | `npm start` / `npm start --prefix proxy` |
 | Lint: ESLint + feature-map coverage + pinned CDN versions | `npm run lint` |
 | Tests (`node:test`) | `npm test` |
@@ -49,7 +49,7 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
    - **In production**, the database user should only have `SELECT` permission. The denylist will always miss something, such as dynamic SQL inside a function.
 2. **Every proxy request goes through all its guards, in order:** CORS (unknown `Origin` → 403) → rate limit → input validation → `assertReadOnly` → `driver.parseConnection` → `assertHostIsSafe` (SSRF) → `driver.runQuery` (read-only, row cap) → timeout. The driver must connect with **exactly** the config returned by `parseConnection`. Never pass the raw connection string to a database library, because its query parameters (`?host=`, `?socketPath=`, a repeated `Server=`) would connect somewhere the SSRF guard never checked.
 3. **Errors returned to the client go through `sanitizeError`**, so a connection string never leaks.
-4. **The local servers are local.** Both `server.js` and `proxy/server.js` listen on `127.0.0.1` unless `HOST` is set. `ALLOW_PRIVATE_HOSTS=true` is a local-only default (set in `proxy/server.js`); production must run with it `false`. The proxy accepts browser requests only from local origins and the ones listed in `ALLOWED_ORIGINS`; an empty list means local-only, **never** "allow all". `test/servers.test.js` and the CORS tests in `proxy/test/query.test.js` enforce this.
+4. **The local servers are local.** Both `server.js` and `proxy/server.js` listen on `127.0.0.1` unless `HOST` is set. `ALLOW_PRIVATE_HOSTS=true` is a local-only default (set in `proxy/server.js`); production must run with it `false`. The proxy accepts browser requests only from local origins and the ones listed in `ALLOWED_ORIGINS`; an empty list means local-only, **never** "allow all". `test/servers.test.js` and the CORS tests in `proxy/test/query.test.js` enforce this. In Docker the images set `HOST=0.0.0.0` (needed inside a container), so the boundary moves to `docker-compose.yml`: ports are published on `127.0.0.1`, never a bare `"3000:3000"`. The compose setup is local-only (`ALLOW_PRIVATE_HOSTS=true`).
 5. **Database data is text, never HTML.** Build DOM only with `h()`/`show()`/`showMessage()` from `js/lib/dom.js`; they always insert text nodes.
 6. **`new Function` in `js/notebook/js-cell.js` is intentional** (it runs user-written JS cells). Don't use it, or `eval`, anywhere else.
 7. **`server.js` serves only `index.html`, `css/` and `js/`.** It's an allowlist, so `.git/`, `.claude/`, `docs/`, `proxy/`, `node_modules/` and any new folder stay private. A new public folder means adding it to `PUBLIC_DIRS` deliberately.
@@ -90,6 +90,7 @@ Agents can also start the servers through `.claude/launch.json` (`frontend`, `pr
 - **Any local origin passes the proxy CORS check, on any port.** Another app you run on `http://localhost:8080` (or one with an XSS hole) could use the proxy. Narrowing it to the QueryIt frontend's port would break `npm run dev` on a custom `PORT`.
 
 
+- **Rate limit key behind Docker or a reverse proxy:** the proxy keys on `X-Forwarded-For` (sent by the client, so spoofable) or else the socket address, which in Docker is the network gateway: every user without that header shares one 30/minute bucket.
 - **DNS rebinding:** the SSRF guard resolves the host, then the driver resolves it again. Only matters with `ALLOW_PRIVATE_HOSTS=false`, i.e. a public deploy.
 - **MySQL:** an explicit `LIMIT` larger than 1000 overrides `sql_select_limit`. The rows are trimmed afterwards, but the server still sends them all.
 - **MySQL and SQL Server drivers** have only been tested through unit tests until someone runs `npm run db:up:all`. That includes their query cancel (`KILL QUERY`, `request.cancel()`); only the Postgres cancel has run against a real database.

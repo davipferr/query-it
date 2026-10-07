@@ -8,9 +8,9 @@ UI text is in Portuguese; bug reports usually quote it. The messages below are l
 ## Setup to drive the app
 
 1. `npm run db:up`, then `npm run db:seed` (test databases; see `docker-compose.yml`).
-2. `preview_start` with `proxy` and `frontend` (`.claude/launch.json`), or `npm run dev`.
+2. `preview_start` with `proxy` and `frontend` (`.claude/launch.json`, runs Node on your machine), or `npm run dev` (both in Docker; see `docker-compose.yml`). Not both: they use the same ports.
 3. Open `http://localhost:5500`. On a fresh profile the settings modal opens by itself.
-4. Postgres test connection string: `postgres://queryit:queryit@localhost:55432/queryit`. The Proxy URL is pre-filled on localhost.
+4. Postgres test connection string: `postgres://queryit:queryit@localhost:55432/queryit` when the proxy runs on your machine; `postgres://queryit:queryit@postgres:5432/queryit` (or `host.docker.internal:55432`) when it runs in Docker, because `localhost` there is the proxy container. The Proxy URL is pre-filled on localhost.
 
 Seed data: `customers` (4 rows; id 3 has a `null` email), `orders` (4 rows), `order items` (3 rows; name with a space), sequence `order_seq` (Postgres only).
 
@@ -125,7 +125,7 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | 200 | `{ columns: string[], rows: any[][], rowCount, elapsedMs, truncated }` (`truncated` when `rowCount >= 1000`) |
 | Errors | `{ error }` with 400 (validation, guard, SSRF, database error), 403 (origin not allowed), 405 (not POST), 429 (rate limit: 30 per minute per IP), 404 (other paths) |
 | CORS | A browser `Origin` must be local (`localhost`, `127.0.0.1`, `[::1]`, any port) or listed in `ALLOWED_ORIGINS` (comma-separated, read on each request). Otherwise 403 before anything else runs, including preflight. An empty list means local-only. Requests without `Origin` (curl) skip CORS. |
-| Listens on | `127.0.0.1:3000` (`HOST`/`PORT` override) |
+| Listens on | `127.0.0.1:3000` (`HOST`/`PORT` override). In Docker (`proxy/Dockerfile`) it listens on `0.0.0.0` inside the container, and `docker-compose.yml` publishes it only on `127.0.0.1`, with `ALLOW_PRIVATE_HOSTS=true` (local use only). |
 | Order | CORS → rate limit → validation → `assertReadOnly` → `parseConnection` → `assertHostIsSafe` → `runQuery` (read-only, 1000-row cap) → 12s timeout. See CLAUDE.md invariants 1–2. A request already cancelled stops right after validation, before any guard or connection. |
 | Cancel | `server.js` sets `req.signal`, aborted when the client closes the connection before the response ends. The handler combines it with the 12s timeout into one `AbortSignal` passed as `runQuery(config, sql, { maxRows, signal })`, and answers as soon as it fires. Drivers stop the query in the database: Postgres runs `pg_cancel_backend(pid)` and MySQL `KILL QUERY threadId`, each from a second connection with the **same** checked config; SQL Server calls `request.cancel()` on the same connection. Best effort: if the cancel fails, `statement_timeout` / `MAX_EXECUTION_TIME` / `requestTimeout` still end it. Drivers also check the signal before each statement, because a cancel sent between statements finds an idle session. **Residual risk:** a cancel still in flight (up to 8s to connect) after the session closed could hit a reused pid / thread id of another session of the same database user. It only cancels a query, never kills a connection. Only the Postgres cancel has run against a real database; MySQL and SQL Server were only read. Tests: `callHandler(body, { signal })`; the per-database "cancelar a requisição…" test checks the query is gone from the database (`countSlowQueries` in `proxy/test/helpers/databases.js`). |
 
@@ -144,7 +144,7 @@ Fast path for automated checks: `localStorage.setItem('queryit.settings', JSON.s
 | | |
 |---|---|
 | Files | `server.js` |
-| Behavior | serves on `127.0.0.1:5500` (`HOST`/`PORT` override). `/` maps to `index.html`. Only `index.html`, `css/**` and `js/**` are public (an allowlist); everything else, including malformed URLs, gets 404. MIME types come from a fixed table. |
+| Behavior | serves on `127.0.0.1:5500` (`HOST`/`PORT` override; in Docker, `Dockerfile` at the root, the same `0.0.0.0`-inside / `127.0.0.1`-published rule as the proxy, and the image only contains `index.html`, `css/`, `js/`). `/` maps to `index.html`. Only `index.html`, `css/**` and `js/**` are public (an allowlist); everything else, including malformed URLs, gets 404. MIME types come from a fixed table. |
 | Tests | `test/servers.test.js` starts both servers and checks they can't be reached from the LAN address, plus the allowlist |
 
 ## 9. Notebook persistence

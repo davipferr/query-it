@@ -1,0 +1,10 @@
+**/node_modules
+.git
+.claude
+.githooks
+docs
+evals
+proxy
+scripts
+test
+.env*

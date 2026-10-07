@@ -122,7 +122,7 @@ The proxy also blocks requests from unknown origins, rate-limits requests, prote
 ### Requirements
 
 - [Node.js](https://nodejs.org/) 22 or newer
-- [Docker](https://www.docker.com/) (optional, only for the sample databases)
+- [Docker](https://www.docker.com/) with Compose (runs the app and the sample databases)
 
 ### Install and run
 
@@ -130,17 +130,23 @@ The proxy also blocks requests from unknown origins, rate-limits requests, prote
 git clone https://github.com/davipferr/query-it.git
 cd query-it
 npm install
-npm install --prefix proxy
+npm install --prefix proxy   # only for tests and db:seed, which run on your machine
 npm run dev
 ```
 
-Open **http://localhost:5500**. On the first visit the settings window opens. Pick your database type and paste a connection string, for example:
+`npm run dev` builds and starts the frontend and the proxy in Docker. Edits to `index.html`, `css/` and `js/` show up on reload; after editing the proxy, run `docker compose restart proxy`.
+
+Open **http://localhost:5500**. On the first visit the settings window opens. Pick your database type and paste a connection string. The proxy runs in a container, so `localhost` there means the container itself: for a database on your machine use `host.docker.internal`, for example:
 
 ```
-postgres://user:password@localhost:5432/mydb
+postgres://user:password@host.docker.internal:5432/mydb
 ```
 
 The proxy URL is already filled in.
+
+Without Docker, `npm start` and `npm start --prefix proxy` in two terminals (here `localhost` in the connection string is your machine).
+
+Both ports are published only on `127.0.0.1`, so nothing else on your network can reach them. This setup is for local use only: the proxy is allowed to reach private addresses.
 
 ### Try it with sample data
 
@@ -151,7 +157,7 @@ npm run db:up
 npm run db:seed
 ```
 
-Then connect with `postgres://queryit:queryit@localhost:55432/queryit`. Stop it with `npm run db:down`.
+Then connect with `postgres://queryit:queryit@postgres:5432/queryit` (or `localhost:55432` if the proxy runs outside Docker). Stop it with `npm run db:down`.
 To start MySQL and SQL Server too, use `npm run db:up:all`.
 
 ## Using the notebook
@@ -187,7 +193,7 @@ Use ▲ / ▼ to reorder cells and ✕ to remove one.
 
 | Task | Command |
 |---|---|
-| Run both servers | `npm run dev` |
+| Run both servers (Docker) | `npm run dev` |
 | Frontend only / proxy only | `npm start` / `npm start --prefix proxy` |
 | Lint | `npm run lint` |
 | Tests | `npm test` |

@@ -1,9 +1,47 @@
-# Bancos descartáveis para testes e verificação local (sem volume: cada `up` começa do zero).
-# Postgres sobe por padrão; MySQL e SQL Server só com --profile (imagens maiores).
-# Popular com dados: npm run db:seed
+# Setup local: app (frontend + proxy) e bancos descartáveis para testes.
+#   npm run dev               -> app (docker compose up --build frontend proxy)
+#   npm run db:up / db:up:all -> bancos de teste (estão em profiles, nunca sobem sozinhos)
 services:
+  frontend:
+    build: .
+    # Node como PID 1 ignora SIGTERM; o init repassa o sinal e o `stop` não espera 10s para matar.
+    init: true
+    ports:
+      # Só 127.0.0.1: publicar em 0.0.0.0 deixaria qualquer vizinho da rede abrir o app.
+      - "127.0.0.1:5500:5500"
+    # O código da sua máquina por cima do da imagem: o server.js lê o arquivo a cada
+    # requisição, então basta recarregar a página.
+    volumes:
+      - ./index.html:/app/index.html:ro
+      - ./css:/app/css:ro
+      - ./js:/app/js:ro
+
+  proxy:
+    build: ./proxy
+    init: true
+    environment:
+      # Uso local: os bancos estão na sua máquina/rede. Nunca em servidor público (invariante 4).
+      ALLOW_PRIVATE_HOSTS: "true"
+    ports:
+      # Mesmo motivo do frontend, e pior: com ALLOW_PRIVATE_HOSTS=true o proxy alcança a rede privada.
+      - "127.0.0.1:3000:3000"
+    # O Node carrega os módulos uma vez: depois de editar, `docker compose restart proxy`
+    # (node --watch não enxerga mudanças feitas no Windows dentro de um bind mount).
+    volumes:
+      - ./proxy/server.js:/app/server.js:ro
+      - ./proxy/api:/app/api:ro
+      - ./proxy/lib:/app/lib:ro
+    # De dentro do container, "localhost" é o próprio container. Bancos rodando na sua máquina
+    # ficam em host.docker.internal (no Linux esse nome só existe com esta linha).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Bancos de teste: sem volume, cada `up` começa do zero. Popular com: npm run db:seed
+  # Do proxy em container, conecte em postgres:5432 / mysql:3306 / mssql:1433;
+  # dos testes na sua máquina, em localhost:55432 / 53306 / 51433.
   postgres:
     image: postgres:18
+    profiles: ["postgres", "all"]
     environment:
       POSTGRES_USER: queryit
       POSTGRES_PASSWORD: queryit
